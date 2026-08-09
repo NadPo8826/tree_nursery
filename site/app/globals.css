@@ -104,6 +104,20 @@ html.a11y-lineheight body * {
     display: none;
   }
 }
+/* The catalog's selection bar / confirmation toast are fixed at the
+   bottom; below lg the corner widgets sit right on top of them — lift
+   the widgets above the bar, and hide them while a selection panel is
+   expanded over that same area. */
+@media (max-width: 1023px) {
+  html.rfq-open .a11y-launcher,
+  html.rfq-open .chat-launcher {
+    bottom: 6rem;
+  }
+  html.rfq-panel-open .a11y-launcher,
+  html.rfq-panel-open .chat-launcher {
+    display: none;
+  }
+}
 html.a11y-noimg img {
   visibility: hidden !important;
 }

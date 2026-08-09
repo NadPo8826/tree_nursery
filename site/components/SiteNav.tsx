@@ -127,7 +127,7 @@ export function SiteNav({ hasSales = false }: { hasSales?: boolean }) {
             className="absolute inset-0 bg-black/55"
           />
           <div className="grainy absolute inset-y-0 start-0 flex w-72 max-w-[85vw] flex-col bg-soil text-ink-cream shadow-2xl">
-            <div className="flex items-center justify-between px-5 py-4">
+            <div className="flex shrink-0 items-center justify-between px-5 py-4">
               {hasLogo ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src="/logo.png" alt={site.name} className="h-11 w-auto" />
@@ -142,7 +142,9 @@ export function SiteNav({ hasSales = false }: { hasSales?: boolean }) {
                 ✕
               </button>
             </div>
-            <nav className="flex flex-col gap-1 px-3 pt-2">
+            {/* scrollable middle — on short screens the links scroll instead
+                of compressing into the CTA below */}
+            <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4 pt-2">
               {links.map((l) => (
                 <Link
                   key={l.href}
@@ -181,7 +183,7 @@ export function SiteNav({ hasSales = false }: { hasSales?: boolean }) {
             </nav>
             <Link
               href="/visit"
-              className="mx-5 mb-8 mt-auto rounded-full bg-clay px-6 py-3 text-center font-semibold text-white shadow-lg shadow-clay/30"
+              className="mx-5 mb-8 mt-4 shrink-0 rounded-full bg-clay px-6 py-3 text-center font-semibold text-white shadow-lg shadow-clay/30"
             >
               צרו קשר — או קבעו ביקור
             </Link>

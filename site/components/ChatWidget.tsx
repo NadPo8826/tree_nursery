@@ -213,7 +213,7 @@ export function ChatWidget() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 start-5 z-50 flex min-h-12 items-center gap-2.5 rounded-full bg-clay px-5 py-3 text-sm font-semibold text-white shadow-2xl shadow-black/35 ring-[2.5px] ring-cream/90 transition-transform hover:-translate-y-0.5"
+          className="chat-launcher fixed bottom-5 start-5 z-50 flex min-h-12 items-center gap-2.5 rounded-full bg-clay px-5 py-3 text-sm font-semibold text-white shadow-2xl shadow-black/35 ring-[2.5px] ring-cream/90 transition-transform hover:-translate-y-0.5"
         >
           <BotAvatar size={26} onDark />
           יש שאלה על עץ?

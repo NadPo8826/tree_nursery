@@ -59,6 +59,22 @@ export function CatalogExplorer({
     if (loaded) localStorage.setItem(RFQ_STORAGE_KEY, JSON.stringify(rfq));
   }, [rfq, loaded]);
 
+  // The selection bar / confirmation toast are fixed at the bottom; these
+  // markers let globals.css move the corner widgets (chat, accessibility)
+  // out of their way on small screens.
+  useEffect(() => {
+    const classes = document.documentElement.classList;
+    classes.toggle("rfq-open", rfq.length > 0 || quoteSent);
+    classes.toggle(
+      "rfq-panel-open",
+      rfq.length > 0 && !quoteSent && panel !== "closed",
+    );
+    return () => {
+      classes.remove("rfq-open");
+      classes.remove("rfq-panel-open");
+    };
+  }, [rfq.length, quoteSent, panel]);
+
   const veterans = trees.filter((t) => t.saleType === "unique");
   const stock = trees.filter((t) => t.saleType !== "unique");
   // Stock grouped by the owner's category (עצי זית / עצי הדר…), in order of
