@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+/* «בין השורות» design system — Nature Distilled (approved mockup, Aug 2026) */
+@theme {
+  /* grounds */
+  --color-cream: #f7f2e6;
+  --color-sand: #f0e6cb;
+  --color-card: #fbf7ec;
+  --color-soil: #261f12;
+  --color-soil-deep: #1e180e;
+
+  /* ink */
+  --color-ink: #2b241a;
+  --color-ink-soft: #55594a;
+  --color-ink-muted: #86755a;
+  --color-ink-cream: #f0ebd9;
+  --color-ink-cream-soft: #c0b69c;
+
+  /* accents */
+  --color-clay: #c0714c;
+  --color-clay-deep: #a85a32;
+  --color-gold: #b07e2e;
+  --color-gold-bright: #e8b85a;
+  --color-leaf: #4f7a3d;
+
+  /* lines */
+  --color-line-sand: #dccfa8;
+  --color-line-warm: #c9b98f;
+
+  /* type */
+  --font-display: var(--font-frank), "Times New Roman", serif;
+  --font-body: var(--font-heebo), "Segoe UI", sans-serif;
+
+  /* organic radii — one softened corner, per the mockup */
+  --radius-pebble: 24px 24px 24px 84px;
+  --radius-pebble-sm: 20px 20px 56px 20px;
+  --radius-chip: 14px 14px 40px 14px;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+}
+
+/* admin form inputs */
+.admin-input {
+  margin-top: 0.25rem;
+  display: block;
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1.5px solid var(--color-line-warm);
+  background: var(--color-cream);
+  padding: 0.55rem 0.9rem;
+  font-size: 0.875rem;
+  color: var(--color-ink);
+}
+
+/* anchor links glide instead of jumping; off for reduced-motion users */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* hide scrollbars on horizontal pill rows without disabling scroll */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes storyfade {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* subtle grain texture for dark soil sections */
+.grainy {
+  position: relative;
+}
+.grainy::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.055;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}

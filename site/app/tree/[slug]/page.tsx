@@ -1,0 +1,148 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { repo } from "@/lib/db";
+import { whatsappLink } from "@/lib/site";
+
+export const revalidate = 60;
+
+export async function generateStaticParams() {
+  const trees = await repo.getTrees();
+  return trees.map((t) => ({ slug: t.slug }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const tree = await repo.getTree((await params).slug);
+  return { title: tree ? tree.nameHe : "עץ" };
+}
+
+export default async function TreePage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const [tree, settings] = await Promise.all([
+    repo.getTree((await params).slug),
+    repo.getSettings(),
+  ]);
+  if (!tree) notFound();
+
+  // only specs with actual data are rendered — empty rows are noise
+  const specs: [string, string][] = [];
+  if (tree.ageYears > 0) specs.push(["גיל משוער", `~${tree.ageYears} שנה`]);
+  if (tree.heightM > 0) specs.push(["גובה נוכחי", `${tree.heightM} מ׳`]);
+  if (tree.trunkDiameterCm > 0) specs.push(["קוטר גזע", `${tree.trunkDiameterCm} ס״מ`]);
+  if (tree.rootBallWeightKg) {
+    specs.push(["משקל גוש", `~${(tree.rootBallWeightKg / 1000).toFixed(1)} טון`]);
+  }
+  if (tree.requirementsHe) specs.push(["דרישות", tree.requirementsHe]);
+
+  return (
+    <div className="mx-auto max-w-6xl px-6 pb-16 pt-8 md:px-12">
+      <nav className="text-xs text-ink-muted">
+        <Link href="/catalog" className="hover:text-ink">
+          קטלוג העצים
+        </Link>{" "}
+        / <b className="text-ink">{tree.nameHe} · עץ {tree.code}</b>
+      </nav>
+
+      <div className="mt-6 grid items-start gap-10 md:grid-cols-2">
+        <div>
+          <div
+            className="h-[420px] rounded-[24px_24px_24px_84px] bg-cover bg-center"
+            style={{
+              backgroundImage:
+                tree.photos[0]
+                  ? `url(${tree.photos[0]})`
+                  : "linear-gradient(170deg,#9aa884,#55614a 70%,#3e4836)",
+            }}
+          />
+        </div>
+
+        <div>
+          <span className="flex flex-wrap items-center gap-2">
+            {tree.saleType === "unique" ? (
+              <span className="inline-block rounded-full bg-soil px-3 py-0.5 text-xs text-gold-bright">
+                ✦ דייר ותיק — עץ יחיד במינו, קיים אחד כזה
+              </span>
+            ) : (
+              <span
+                className={`inline-block rounded-full px-3 py-0.5 text-xs text-white ${
+                  tree.availability === "sold" ? "bg-ink-muted" : "bg-leaf"
+                }`}
+              >
+                {tree.availability === "sold" ? "אזל מהמלאי" : "במלאי"}
+              </span>
+            )}
+          </span>
+          <h1 className="mt-3 font-display text-4xl">{tree.nameHe}</h1>
+          {(tree.speciesLatin || tree.code) && (
+            <p className="text-sm italic text-ink-muted" dir="ltr">
+              {[tree.speciesLatin, tree.code && `#${tree.code}`]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
+          {tree.storyHe && (
+            <p className="mt-4 text-sm leading-relaxed text-ink-soft">
+              {tree.storyHe}
+            </p>
+          )}
+
+          {specs.length > 0 && (
+            <dl className="mt-6 grid grid-cols-[auto_1fr] gap-x-8 gap-y-2 border-y border-line-sand py-5 text-sm">
+              {specs.map(([dt, dd]) => (
+                <div key={dt} className="contents">
+                  <dt className="text-ink-muted">{dt}</dt>
+                  <dd className="font-semibold tabular-nums">{dd}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          {settings.showPrices && tree.priceMode !== "hidden" ? (
+            <p className="mt-5 font-display text-2xl font-semibold text-clay-deep tabular-nums">
+              {tree.saleType === "unique" ? "" : "החל מ־"}₪
+              {tree.price.toLocaleString("he-IL")}
+              <span className="mt-1 block font-body text-xs font-normal text-ink-muted">
+                {tree.saleType === "unique"
+                  ? "מחיר העץ. הובלה, מנוף ונטיעה מתומחרים לפי תנאי השטח."
+                  : "המחיר הסופי נקבע לפי הגישה לשטח, המנוף ומרחק ההובלה"}
+              </span>
+            </p>
+          ) : (
+            <p className="mt-5 text-sm text-ink-muted">
+              צרו איתנו קשר לגבי המחיר — הוא תלוי בגישה לשטח, במנוף ובמרחק
+              ההובלה. נחזור אליכם עם הצעה מסודרת.
+            </p>
+          )}
+
+          <div className="mt-6 flex flex-wrap items-center gap-6">
+            <Link
+              href="/visit"
+              className="rounded-full bg-clay px-6 py-2.5 font-semibold text-white shadow-lg shadow-clay/30 transition-transform hover:-translate-y-0.5"
+            >
+              בקשו הצעת מחיר לעץ הזה
+            </Link>
+            <a
+              href={whatsappLink(
+                settings.whatsapp,
+                `שלום, ראיתי באתר את ${tree.nameHe} (עץ ${tree.code}) ורציתי לשאול…`,
+              )}
+              className="border-b border-gold pb-0.5 text-sm"
+            >
+              שאלו עליו בוואטסאפ
+            </a>
+          </div>
+          <p className="mt-5 text-xs text-ink-muted">
+            אנשי מקצוע: דף מפרט PDF יהיה זמין להורדה · קו ישיר {settings.proPhone}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
