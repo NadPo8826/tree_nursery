@@ -5,6 +5,7 @@ import { repo } from "@/lib/db";
 import { whatsappLink } from "@/lib/site";
 import { hasPromo } from "@/lib/catalog";
 import { safeJsonLd } from "@/lib/seo";
+import { TreeGallery } from "@/components/TreeGallery";
 
 export const revalidate = 60;
 
@@ -87,38 +88,7 @@ export default async function TreePage({
       </nav>
 
       <div className="mt-6 grid items-start gap-10 md:grid-cols-2">
-        <div>
-          <div
-            className="h-[420px] rounded-[24px_24px_24px_84px] bg-cover bg-center"
-            style={{
-              backgroundImage:
-                tree.photos[0]
-                  ? `url(${tree.photos[0]})`
-                  : "linear-gradient(170deg,#9aa884,#55614a 70%,#3e4836)",
-            }}
-          />
-          {tree.photos.length > 1 && (
-            <div className="mt-3 grid grid-cols-4 gap-3">
-              {tree.photos.slice(1, 5).map((photo) => (
-                <a
-                  key={photo}
-                  href={photo}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="תמונה נוספת של העץ (נפתחת בחלון חדש)"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photo}
-                    alt={`${tree.nameHe} — תמונה נוספת`}
-                    loading="lazy"
-                    className="h-20 w-full rounded-xl object-cover transition-transform hover:scale-[1.03]"
-                  />
-                </a>
-              ))}
-            </div>
-          )}
-        </div>
+        <TreeGallery photos={tree.photos} nameHe={tree.nameHe} />
 
         <div>
           <span className="flex flex-wrap items-center gap-2">
