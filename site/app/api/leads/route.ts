@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { repo } from "@/lib/db";
 import type { Lead, LeadItem } from "@/lib/db";
+import { leadTopicLabel } from "@/lib/types";
 import { notifyNewLead } from "@/lib/notify";
 
 /**
@@ -54,8 +55,12 @@ export async function POST(req: NextRequest) {
   const phone = str(body.phone, 20).replace(/\s/g, "");
   const email = str(body.email, 120);
   const message = str(body.message, 1000);
-  const interest = str(body.interest, 200);
   const channel = str(body.channel, 20);
+  // topic (contact-form dropdown) is server-validated against the known
+  // keys; its label becomes the interest text so every downstream surface
+  // (admin cards, Telegram alert, email subject) reads the same words
+  const topic = leadTopicLabel(str(body.topic, 20)) ? str(body.topic, 20) : "";
+  const interest = topic ? leadTopicLabel(topic)! : str(body.interest, 200);
 
   if (name.length < 2) {
     return NextResponse.json({ error: "נשמח לשם מלא" }, { status: 400 });
@@ -97,6 +102,7 @@ export async function POST(req: NextRequest) {
     email: email || undefined,
     message,
     interest,
+    topic: topic || undefined,
     items,
     channel: channel as Lead["channel"],
     sourcePage: str(body.sourcePage, 200),

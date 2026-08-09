@@ -72,7 +72,7 @@ export default async function GuidePage({
           href="/visit"
           className="mt-4 inline-block rounded-full bg-clay px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-clay/30"
         >
-          לתיאום ביקור
+          ליצירת קשר
         </Link>
       </div>
     </article>

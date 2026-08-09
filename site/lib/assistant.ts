@@ -197,7 +197,7 @@ async function runTool(
           "כתובת לא הוגדרה — הפנה לטלפון לתיאום הגעה",
         navigation:
           settings.addressHe || settings.navCoords
-            ? "כפתורי ניווט Waze / Google Maps נמצאים בעמוד תיאום הביקור באתר"
+            ? "כפתורי ניווט Waze / Google Maps נמצאים בעמוד יצירת הקשר באתר"
             : undefined,
         info:
           settings.aiInfoHe.trim() ||

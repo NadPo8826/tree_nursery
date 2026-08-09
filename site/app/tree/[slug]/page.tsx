@@ -157,7 +157,7 @@ export default async function TreePage({
 
           <div className="mt-6 flex flex-wrap items-center gap-6">
             <Link
-              href="/visit"
+              href="/visit?topic=quote"
               className="rounded-full bg-clay px-6 py-2.5 font-semibold text-white shadow-lg shadow-clay/30 transition-transform hover:-translate-y-0.5"
             >
               בקשו הצעת מחיר לעץ הזה

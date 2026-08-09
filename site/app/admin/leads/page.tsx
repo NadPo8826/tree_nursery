@@ -20,19 +20,30 @@ const channelLabels: Record<string, string> = {
   manual: "ידני / טלפון",
 };
 
-type Tab = "all" | "quote" | "visit" | "pro" | "other";
+type Tab = "all" | "quote" | "visit" | "callback" | "question" | "pro" | "other";
 
 function leadTab(lead: Lead): Exclude<Tab, "all"> {
   if (lead.isPro) return "pro";
-  if (lead.channel === "rfq") return "quote";
+  if (lead.channel === "rfq" || lead.topic === "quote") return "quote";
+  switch (lead.topic) {
+    case "visit":
+      return "visit";
+    case "callback":
+      return "callback";
+    case "question":
+      return "question";
+  }
+  // legacy leads (before the topic dropdown) carried only interest text
   if (lead.channel === "form" && lead.interest.includes("ביקור")) return "visit";
   return "other";
 }
 
 const tabs: { key: Tab; label: string }[] = [
   { key: "all", label: "הכול" },
-  { key: "quote", label: "הצעות מחיר" },
+  { key: "callback", label: "יצירת קשר" },
   { key: "visit", label: "תיאום ביקור" },
+  { key: "quote", label: "הצעות מחיר" },
+  { key: "question", label: "שאלות" },
   { key: "pro", label: "אנשי מקצוע" },
   { key: "other", label: "אחר" },
 ];

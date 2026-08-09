@@ -30,7 +30,7 @@ export default async function AdminSettingsPage() {
           טלפון ראשי
           <input name="phone" defaultValue={s.phone} dir="ltr" className="admin-input" />
           <span className="mt-1 block text-[11px] leading-relaxed">
-            מוצג לגולשים בכל האתר (פוטר, תיאום ביקור) והעוזר החכם מוסר אותו
+            מוצג לגולשים בכל האתר (פוטר, עמוד יצירת הקשר) והעוזר החכם מוסר אותו
             למתעניינים. לחיצה עליו בנייד מחייגת.
           </span>
         </label>
@@ -67,7 +67,7 @@ export default async function AdminSettingsPage() {
           <input name="addressHe" defaultValue={s.addressHe} className="admin-input" />
           <span className="mt-1 block text-[11px] leading-relaxed">
             מוצגת באתר ומשמשת לכפתורי הניווט (Waze / Google Maps) בעמוד
-            תיאום הביקור ובפוטר. ריק — כפתורי הניווט לא מוצגים.
+            יצירת הקשר ובפוטר. ריק — כפתורי הניווט לא מוצגים.
           </span>
         </label>
         <label className="block text-xs text-ink-muted">

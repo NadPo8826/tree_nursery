@@ -266,7 +266,7 @@ export default async function Home() {
             href="/visit"
             className="mt-7 inline-block rounded-full bg-clay px-7 py-3 font-semibold text-white shadow-lg shadow-clay/40 transition-transform hover:-translate-y-0.5"
           >
-            לתיאום ביקור במשתלה
+            דברו איתנו — או קבעו ביקור
           </Link>
         </div>
         <HorizonCurve
@@ -329,7 +329,7 @@ export default async function Home() {
               ותוכנית גיזום משלו.
             </p>
             <Link
-              href="/visit"
+              href="/visit?topic=visit"
               className="mt-5 inline-flex items-center gap-3 text-sm"
             >
               לסיור המצולם המלא
@@ -594,7 +594,7 @@ export default async function Home() {
               href="/visit"
               className="rounded-full bg-clay px-6 py-2.5 font-semibold text-white shadow-lg shadow-clay/30 transition-transform hover:-translate-y-0.5"
             >
-              לתאם ביקור
+              צרו קשר
             </Link>
             <a
               href={`tel:${settings.phone}`}

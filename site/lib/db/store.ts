@@ -30,6 +30,8 @@ export interface Lead {
   email?: string;
   message: string;
   interest: string;
+  /** Contact-form topic key (LEAD_TOPICS); absent on RFQ/chat/legacy leads. */
+  topic?: string;
   items: LeadItem[];
   channel: LeadChannel;
   sourcePage: string;

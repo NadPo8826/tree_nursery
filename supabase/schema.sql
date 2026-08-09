@@ -32,6 +32,7 @@ create table leads (
   email text,
   message text default '',
   interest text default '',
+  topic text, -- contact-form topic key (callback/visit/quote/question)
   items jsonb not null default '[]',
   quotes_sent jsonb not null default '[]',
   channel text not null check (channel in ('form','rfq','ai_chat','whatsapp_click')),

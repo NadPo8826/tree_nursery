@@ -25,10 +25,10 @@ export default function AboutPage() {
       </ol>
       <div className="mt-10 text-center">
         <Link
-          href="/visit"
+          href="/visit?topic=visit"
           className="rounded-full bg-clay px-6 py-2.5 font-semibold text-white shadow-lg shadow-clay/30"
         >
-          בואו להכיר — תיאום ביקור
+          בואו להכיר — צרו קשר
         </Link>
       </div>
     </div>

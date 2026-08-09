@@ -44,7 +44,7 @@ export async function SiteFooter() {
           <Link href="/about" className={link}>הסיפור שלנו</Link>
           <Link href="/process" className={link}>איך עובדת העתקת עץ בוגר</Link>
           <Link href="/projects" className={link}>פרויקטים בכל הארץ</Link>
-          <Link href="/visit" className={link}>תיאום ביקור במשתלה</Link>
+          <Link href="/visit" className={link}>יצירת קשר ותיאום ביקור</Link>
           <Link href="/pro" className={link}>לאנשי מקצוע ורשויות</Link>
         </nav>
 

@@ -115,7 +115,7 @@ export function SiteNav({ hasSales = false }: { hasSales?: boolean }) {
         href="/visit"
         className="ms-auto shrink-0 whitespace-nowrap rounded-full bg-clay px-4 py-1.5 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5 lg:ms-0"
       >
-        תיאום ביקור
+        צרו קשר
       </Link>
 
       {/* drawer */}
@@ -183,7 +183,7 @@ export function SiteNav({ hasSales = false }: { hasSales?: boolean }) {
               href="/visit"
               className="mx-5 mb-8 mt-auto rounded-full bg-clay px-6 py-3 text-center font-semibold text-white shadow-lg shadow-clay/30"
             >
-              תיאום ביקור במשתלה
+              צרו קשר — או קבעו ביקור
             </Link>
           </div>
         </div>

@@ -10,6 +10,23 @@ export type PriceMode = "hidden" | "from" | "visible";
  */
 export type SaleType = "unique" | "stock";
 
+/**
+ * Contact-form topics: the dropdown on the contact page. The key is the
+ * stable identity (stored on the lead, drives admin-tab filtering); the
+ * label is what visitors, the owner, and the Telegram alerts see.
+ */
+export const LEAD_TOPICS = [
+  { key: "callback", labelHe: "בקשה ליצירת קשר" },
+  { key: "visit", labelHe: "תיאום ביקור במשתלה" },
+  { key: "quote", labelHe: "הצעת מחיר" },
+  { key: "question", labelHe: "שאלה כללית" },
+] as const;
+export type LeadTopicKey = (typeof LEAD_TOPICS)[number]["key"];
+
+export function leadTopicLabel(key: string | undefined): string | undefined {
+  return LEAD_TOPICS.find((t) => t.key === key)?.labelHe;
+}
+
 
 export interface Tree {
   slug: string;

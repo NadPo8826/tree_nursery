@@ -56,7 +56,7 @@ export default function ProcessPage() {
           href="/visit"
           className="rounded-full bg-clay px-6 py-2.5 font-semibold text-white shadow-lg shadow-clay/30"
         >
-          מתחילים בביקור — תיאום עכשיו
+          מתחילים בשיחה או בביקור — צרו קשר
         </Link>
       </div>
     </div>

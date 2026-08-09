@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { LEAD_TOPICS, type LeadTopicKey } from "@/lib/types";
 
 type FormState = "idle" | "sending" | "sent" | "error";
 
 /**
- * The three-field lead form (name, phone, free text) posting to /api/leads.
- * Includes a honeypot field; shows inline validation errors from the server.
+ * The lead form (name, phone, free text — plus an optional topic dropdown
+ * on the contact page) posting to /api/leads. Includes a honeypot field;
+ * shows inline validation errors from the server.
  */
 export interface LeadFormItem {
   treeSlug: string;
@@ -16,7 +18,9 @@ export interface LeadFormItem {
 }
 
 export function LeadForm({
-  interest,
+  interest = "",
+  topicPicker = false,
+  defaultTopic = "callback",
   isPro = false,
   submitLabel = "שליחה — נחזור אליכם",
   channel = "form",
@@ -25,7 +29,11 @@ export function LeadForm({
   messageLabel,
   onSuccess,
 }: {
-  interest: string;
+  /** Fixed interest text — for flows without the topic dropdown (RFQ, pro). */
+  interest?: string;
+  /** Show the topic dropdown (contact page); the server derives interest from it. */
+  topicPicker?: boolean;
+  defaultTopic?: LeadTopicKey;
   isPro?: boolean;
   submitLabel?: string;
   channel?: "form" | "rfq";
@@ -40,6 +48,16 @@ export function LeadForm({
   const pathname = usePathname();
   const [state, setState] = useState<FormState>("idle");
   const [error, setError] = useState("");
+  const [topic, setTopic] = useState<LeadTopicKey>(defaultTopic);
+
+  // links like /visit?topic=quote preselect the dropdown — read after mount
+  // (not useSearchParams) so the page can stay statically rendered
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("topic");
+    if (fromUrl && LEAD_TOPICS.some((t) => t.key === fromUrl)) {
+      setTopic(fromUrl as LeadTopicKey);
+    }
+  }, []);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -57,6 +75,7 @@ export function LeadForm({
           email: data.get("email") ?? "",
           message: data.get("message"),
           website: data.get("website"), // honeypot
+          topic: topicPicker ? data.get("topic") : "",
           interest,
           channel,
           items,
@@ -91,6 +110,23 @@ export function LeadForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-4 text-start">
+      {topicPicker && (
+        <label className="block text-sm">
+          במה נוכל לעזור?
+          <select
+            name="topic"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value as LeadTopicKey)}
+            className="admin-input"
+          >
+            {LEAD_TOPICS.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.labelHe}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="block text-sm">
         שם
         <input
