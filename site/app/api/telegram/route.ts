@@ -73,13 +73,6 @@ const MENU_PROMPTS: Record<string, string> = {
   catalog: "אני רוצה לעדכן משהו בקטלוג (מחיר / מבצע / זמינות / עץ חדש). שאל אותי מה.",
 };
 
-function transcript(turns: ConvoTurn[]): string {
-  return turns
-    .slice(-10)
-    .map((t) => `${t.role === "user" ? "הבעלים" : "המזכיר"}: ${t.content.slice(0, 300)}`)
-    .join("\n");
-}
-
 /**
  * Runs the secretary with session semantics and replies. Returns nothing;
  * shared by text messages, photos, and button taps.
@@ -94,9 +87,9 @@ async function converse(chatId: string | number, text: string): Promise<void> {
   const lastAt = stored.length > 0 ? new Date(stored[stored.length - 1].at).getTime() : 0;
   const isNewSession = stored.length === 0 || Date.now() - lastAt > timeoutMs;
 
+  // a new session starts truly clean — previous turns come back ONLY via
+  // the explicit "resume last conversation" button (which un-expires them)
   const activeTurns: ConvoTurn[] = isNewSession ? [] : stored;
-  const previousContext =
-    isNewSession && stored.length > 0 ? transcript(stored) : undefined;
 
   const userTurn: ConvoTurn = {
     role: "user",
@@ -109,7 +102,6 @@ async function converse(chatId: string | number, text: string): Promise<void> {
   try {
     const reply = await runSecretary(
       history.slice(-20).map(({ role, content }) => ({ role, content })),
-      { previousContext },
     );
     // reply FIRST — persistence and logging happen after, off the hot path
     await tgSend(

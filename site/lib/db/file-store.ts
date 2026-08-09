@@ -59,6 +59,50 @@ const defaultSettings: Settings = {
 
 const emptyTelegramState = { lastDigestDate: "", naggedLeadIds: [] };
 
+/**
+ * All mutations run through this chain so concurrent requests (webhook,
+ * cron, pageview tracker…) can never interleave a read-modify-write and
+ * corrupt the file. Writes are atomic (tmp + rename). On corruption we
+ * move the bad file aside and restore the newest nightly backup — a fresh
+ * seed is the LAST resort and screams in the logs.
+ */
+let writeChain: Promise<unknown> = Promise.resolve();
+
+export function withDbLock<T>(fn: () => Promise<T>): Promise<T> {
+  const next = writeChain.then(fn, fn);
+  writeChain = next.catch(() => {});
+  return next;
+}
+
+async function recoverFromCorruption(): Promise<DbShape | null> {
+  const stamp = Date.now();
+  try {
+    await fs.rename(DB_PATH, `${DB_PATH}.corrupt-${stamp}`);
+    console.error(
+      `db.json was corrupt — moved to db.json.corrupt-${stamp}; attempting backup restore`,
+    );
+  } catch {
+    /* nothing to move */
+  }
+  try {
+    const backupDir = path.join(process.cwd(), ".data", "backups");
+    const backups = (await fs.readdir(backupDir)).filter((f) => f.startsWith("db-")).sort();
+    const latest = backups[backups.length - 1];
+    if (latest) {
+      const raw = await fs.readFile(path.join(backupDir, latest), "utf8");
+      const db = JSON.parse(raw) as DbShape;
+      console.error(`db restored from backup ${latest}`);
+      return db;
+    }
+  } catch {
+    /* no usable backup */
+  }
+  console.error(
+    "NO BACKUP AVAILABLE — reseeding a fresh database. Runtime data (leads, settings, media) is lost.",
+  );
+  return null;
+}
+
 async function load(): Promise<DbShape> {
   try {
     const raw = await fs.readFile(DB_PATH, "utf8");
@@ -88,7 +132,17 @@ async function load(): Promise<DbShape> {
     db.telegramConvos ??= {};
     db.analytics ??= {};
     return db;
-  } catch {
+  } catch (e) {
+    // distinguish "file missing" (first run — quietly seed) from
+    // "file corrupt" (attempt backup restore before losing anything)
+    const missing = (e as NodeJS.ErrnoException)?.code === "ENOENT";
+    if (!missing) {
+      const recovered = await recoverFromCorruption();
+      if (recovered) {
+        await save(recovered);
+        return load();
+      }
+    }
     const fresh: DbShape = {
       trees: seedTrees,
       leads: [],
@@ -117,7 +171,21 @@ async function load(): Promise<DbShape> {
 
 async function save(db: DbShape): Promise<void> {
   await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
-  await fs.writeFile(DB_PATH, JSON.stringify(db, null, 2), "utf8");
+  // atomic: write to a temp file, then rename over the target — a crash or
+  // concurrent reader can never observe a half-written db.json
+  const tmp = `${DB_PATH}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(db, null, 2), "utf8");
+  await fs.rename(tmp, DB_PATH);
+}
+
+/** Read-modify-write helper: the whole cycle runs inside the write lock. */
+function mutate<T>(fn: (db: DbShape) => T | Promise<T>): Promise<T> {
+  return withDbLock(async () => {
+    const db = await load();
+    const result = await fn(db);
+    await save(db);
+    return result;
+  });
 }
 
 export const fileRepo: Repo = {
@@ -128,16 +196,16 @@ export const fileRepo: Repo = {
     return (await load()).trees.find((t) => t.slug === slug);
   },
   async upsertTree(tree: Tree) {
-    const db = await load();
-    const i = db.trees.findIndex((t) => t.slug === tree.slug);
-    if (i >= 0) db.trees[i] = tree;
-    else db.trees.push(tree);
-    await save(db);
+    await mutate(async (db) => {
+      const i = db.trees.findIndex((t) => t.slug === tree.slug);
+      if (i >= 0) db.trees[i] = tree;
+      else db.trees.push(tree);
+    });
   },
   async deleteTree(slug: string) {
-    const db = await load();
-    db.trees = db.trees.filter((t) => t.slug !== slug);
-    await save(db);
+    await mutate(async (db) => {
+      db.trees = db.trees.filter((t) => t.slug !== slug);
+    });
   },
 
   async getLeads() {
@@ -145,30 +213,26 @@ export const fileRepo: Repo = {
     return [...db.leads].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
   async addLead(lead: Lead) {
-    const db = await load();
-    db.leads.push(lead);
-    await save(db);
+    await mutate(async (db) => {
+      db.leads.push(lead);
+    });
   },
   async setLeadStatus(id: string, status: LeadStatus) {
-    const db = await load();
-    const lead = db.leads.find((l) => l.id === id);
-    if (lead) {
-      lead.status = status;
-      await save(db);
-    }
+    await mutate(async (db) => {
+      const lead = db.leads.find((l) => l.id === id);
+      if (lead) lead.status = status;
+    });
   },
   async appendLeadQuote(id, quote) {
-    const db = await load();
-    const lead = db.leads.find((l) => l.id === id);
-    if (lead) {
-      lead.quotesSent = [...(lead.quotesSent ?? []), quote];
-      await save(db);
-    }
+    await mutate(async (db) => {
+      const lead = db.leads.find((l) => l.id === id);
+      if (lead) lead.quotesSent = [...(lead.quotesSent ?? []), quote];
+    });
   },
   async deleteLead(id: string) {
-    const db = await load();
-    db.leads = db.leads.filter((l) => l.id !== id);
-    await save(db);
+    await mutate(async (db) => {
+      db.leads = db.leads.filter((l) => l.id !== id);
+    });
   },
   async getAiFeedback() {
     return (await load()).aiFeedback;
@@ -177,42 +241,42 @@ export const fileRepo: Repo = {
     return (await load()).clients;
   },
   async saveClients(clients) {
-    const db = await load();
-    db.clients = clients;
-    await save(db);
+    await mutate(async (db) => {
+      db.clients = clients;
+    });
   },
   async getQuotes() {
     return (await load()).quotes;
   },
   async saveQuotes(quotes) {
-    const db = await load();
-    db.quotes = quotes;
-    await save(db);
+    await mutate(async (db) => {
+      db.quotes = quotes;
+    });
   },
   async getTelegramState() {
     return (await load()).telegramState;
   },
   async saveTelegramState(state) {
-    const db = await load();
-    db.telegramState = state;
-    await save(db);
+    await mutate(async (db) => {
+      db.telegramState = state;
+    });
   },
   async getTelegramLog() {
     return (await load()).telegramLog;
   },
   async trackPageview(day, path, visitorHash) {
-    const db = await load();
-    const entry = (db.analytics[day] ??= { paths: {}, visitors: [] });
-    entry.paths[path] = (entry.paths[path] ?? 0) + 1;
-    if (!entry.visitors.includes(visitorHash) && entry.visitors.length < 5000) {
-      entry.visitors.push(visitorHash);
-    }
-    // retention: keep the last 90 days
-    const days = Object.keys(db.analytics).sort();
-    for (const old of days.slice(0, Math.max(0, days.length - 90))) {
-      delete db.analytics[old];
-    }
-    await save(db);
+    await mutate(async (db) => {
+      const entry = (db.analytics[day] ??= { paths: {}, visitors: [] });
+      entry.paths[path] = (entry.paths[path] ?? 0) + 1;
+      if (!entry.visitors.includes(visitorHash) && entry.visitors.length < 5000) {
+        entry.visitors.push(visitorHash);
+      }
+      // retention: keep the last 90 days
+      const days = Object.keys(db.analytics).sort();
+      for (const old of days.slice(0, Math.max(0, days.length - 90))) {
+        delete db.analytics[old];
+      }
+    });
   },
   async getAnalytics() {
     return (await load()).analytics;
@@ -221,78 +285,78 @@ export const fileRepo: Repo = {
     return (await load()).telegramConvos[chatId] ?? [];
   },
   async saveTelegramConvo(chatId, turns) {
-    const db = await load();
-    db.telegramConvos[chatId] = turns.slice(-30);
-    await save(db);
+    await mutate(async (db) => {
+      db.telegramConvos[chatId] = turns.slice(-30);
+    });
   },
   async appendTelegramLog(entry) {
-    const db = await load();
-    db.telegramLog = [...db.telegramLog, entry].slice(-300);
-    await save(db);
+    await mutate(async (db) => {
+      db.telegramLog = [...db.telegramLog, entry].slice(-300);
+    });
   },
   async addAiFeedbackVote(key: string, vote: "up" | "down") {
-    const db = await load();
-    const entry = (db.aiFeedback[key] ??= { up: 0, down: 0 });
-    entry[vote]++;
-    await save(db);
+    await mutate(async (db) => {
+      const entry = (db.aiFeedback[key] ??= { up: 0, down: 0 });
+      entry[vote]++;
+    });
   },
 
   async getSettings() {
     return (await load()).settings;
   },
   async saveSettings(settings: Settings) {
-    const db = await load();
-    db.settings = settings;
-    await save(db);
+    await mutate(async (db) => {
+      db.settings = settings;
+    });
   },
 
   async getGuides() {
     return (await load()).guides;
   },
   async upsertGuide(guide: Guide) {
-    const db = await load();
-    const i = db.guides.findIndex((g) => g.slug === guide.slug);
-    if (i >= 0) db.guides[i] = guide;
-    else db.guides.push(guide);
-    await save(db);
+    await mutate(async (db) => {
+      const i = db.guides.findIndex((g) => g.slug === guide.slug);
+      if (i >= 0) db.guides[i] = guide;
+      else db.guides.push(guide);
+    });
   },
   async deleteGuide(slug: string) {
-    const db = await load();
-    db.guides = db.guides.filter((g) => g.slug !== slug);
-    await save(db);
+    await mutate(async (db) => {
+      db.guides = db.guides.filter((g) => g.slug !== slug);
+    });
   },
 
   async getProjects() {
     return (await load()).projects;
   },
   async upsertProject(project: Project) {
-    const db = await load();
-    const i = db.projects.findIndex((p) => p.slug === project.slug);
-    if (i >= 0) db.projects[i] = project;
-    else db.projects.push(project);
-    await save(db);
+    await mutate(async (db) => {
+      const i = db.projects.findIndex((p) => p.slug === project.slug);
+      if (i >= 0) db.projects[i] = project;
+      else db.projects.push(project);
+    });
   },
   async deleteProject(slug: string) {
-    const db = await load();
-    db.projects = db.projects.filter((p) => p.slug !== slug);
-    await save(db);
+    await mutate(async (db) => {
+      db.projects = db.projects.filter((p) => p.slug !== slug);
+    });
   },
 
   async getMedia() {
     return (await load()).media;
   },
   async saveMedia(media: SiteMedia) {
-    const db = await load();
-    db.media = media;
-    await save(db);
+    await mutate(async (db) => {
+      db.media = media;
+    });
   },
 
   async getReminders() {
     return (await load()).reminders;
   },
   async saveReminders(reminders) {
-    const db = await load();
-    db.reminders = reminders;
-    await save(db);
+    await mutate(async (db) => {
+      db.reminders = reminders;
+    });
   },
 };
