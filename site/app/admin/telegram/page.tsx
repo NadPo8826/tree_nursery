@@ -1,6 +1,6 @@
 import { repo } from "@/lib/db";
 import { requireAdminPage } from "@/lib/admin-guard";
-import { recentChats } from "@/lib/telegram";
+import { parseAdminEntries, recentChats } from "@/lib/telegram";
 import { SaveButton } from "@/components/admin/SaveButton";
 import {
   addTelegramAdminAction,
@@ -52,16 +52,15 @@ export default async function AdminTelegramPage({
   const discovered = doDiscover ? await recentChats() : undefined;
 
   const tokenSet = Boolean(process.env.TELEGRAM_BOT_TOKEN);
-  const envIds = [
-    ...(process.env.TELEGRAM_ADMIN_CHAT_IDS ?? "").split(","),
-    process.env.TELEGRAM_CHAT_ID ?? "",
-  ]
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const dbIds = settings.telegramAdminIds
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const envEntries = parseAdminEntries(
+    [process.env.TELEGRAM_ADMIN_CHAT_IDS, process.env.TELEGRAM_CHAT_ID]
+      .filter(Boolean)
+      .join(","),
+  );
+  const dbEntries = parseAdminEntries(settings.telegramAdminIds);
+  // discovery rows prefill a login-safe username from the Telegram name
+  const suggestName = (raw: string) =>
+    raw.replace(/[^\p{L}\p{N}_-]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 20);
 
   return (
     <div>
@@ -76,7 +75,7 @@ export default async function AdminTelegramPage({
           {tokenSet ? "✓ בוט מחובר" : "חסר TELEGRAM_BOT_TOKEN בשרת"}
         </span>
         <span className="rounded-full bg-sand px-4 py-1.5">
-          מנהלים מקובץ השרת: {envIds.length}
+          מנהלים מקובץ השרת: {envEntries.length}
         </span>
       </div>
 
@@ -85,43 +84,62 @@ export default async function AdminTelegramPage({
         <section className="rounded-2xl border-[1.5px] border-line-sand bg-card p-5">
           <h2 className="font-display text-xl">מי יכול לדבר עם הבוט</h2>
           <p className="mt-1 text-xs text-ink-muted">
-            רק חשבונות ברשימה מקבלים מענה. מזהים מקובץ השרת אינם ניתנים להסרה
-            מכאן (הגנת גיבוי).
+            רק חשבונות ברשימה מקבלים מענה. שם המשתמש משמש גם לכניסה לניהול —
+            בכניסה נשלח קוד חד־פעמי לטלגרם של אותו משתמש. מזהים מקובץ השרת
+            אינם ניתנים להסרה מכאן (הגנת גיבוי).
           </p>
           <ul className="mt-3 space-y-2 text-sm">
-            {envIds.map((id) => (
-              <li key={id} className="flex items-center gap-3">
-                <span dir="ltr" className="tabular-nums">{id}</span>
+            {envEntries.map((entry) => (
+              <li key={entry.chatId} className="flex items-center gap-3">
+                <span className="min-w-0 flex-1 truncate">
+                  {entry.name || <span className="text-ink-muted">ללא שם משתמש</span>}{" "}
+                  <span dir="ltr" className="text-xs text-ink-muted tabular-nums">
+                    {entry.chatId}
+                  </span>
+                </span>
                 <span className="rounded-full bg-sand px-2 py-0.5 text-[11px]">קובץ שרת</span>
               </li>
             ))}
-            {dbIds.map((id) => (
-              <li key={id} className="flex items-center gap-3">
-                <span dir="ltr" className="tabular-nums">{id}</span>
+            {dbEntries.map((entry) => (
+              <li key={entry.chatId} className="flex items-center gap-3">
+                <span className="min-w-0 flex-1 truncate">
+                  {entry.name || <span className="text-ink-muted">ללא שם משתמש</span>}{" "}
+                  <span dir="ltr" className="text-xs text-ink-muted tabular-nums">
+                    {entry.chatId}
+                  </span>
+                </span>
                 <form action={removeTelegramAdminAction}>
-                  <input type="hidden" name="chatId" value={id} />
+                  <input type="hidden" name="chatId" value={entry.chatId} />
                   <SaveButton toast="המנהל הוסר" className="text-xs text-red-700 hover:underline">
                     הסרה
                   </SaveButton>
                 </form>
               </li>
             ))}
-            {envIds.length + dbIds.length === 0 && (
+            {envEntries.length + dbEntries.length === 0 && (
               <li className="text-xs text-ink-muted">אין עדיין מנהלים.</li>
             )}
           </ul>
 
-          <form action={addTelegramAdminAction} className="mt-4 flex gap-2">
+          <form action={addTelegramAdminAction} className="mt-4 flex flex-wrap gap-2">
+            <input
+              name="name"
+              placeholder="שם משתמש (לכניסה)"
+              className="admin-input min-w-32 flex-1"
+            />
             <input
               name="chatId"
               dir="ltr"
               placeholder="מזהה צ'אט (מספר)"
-              className="admin-input flex-1"
+              className="admin-input min-w-32 flex-1"
             />
             <SaveButton toast="המנהל נוסף" className="shrink-0 rounded-full bg-clay px-4 py-2 text-sm font-semibold text-white">
               הוספה
             </SaveButton>
           </form>
+          <p className="mt-1 text-[11px] text-ink-muted">
+            שם משתמש: אותיות/ספרות/מקף בלבד, 2–20 תווים, ייחודי.
+          </p>
 
           <div className="mt-4 border-t border-line-sand pt-3">
             <Link
@@ -147,16 +165,22 @@ export default async function AdminTelegramPage({
             {discovered && discovered.length > 0 && (
               <ul className="mt-2 space-y-2">
                 {discovered.map((chat) => (
-                  <li key={chat.id} className="flex items-center gap-3 text-sm">
-                    <span className="min-w-0 flex-1 truncate">
+                  <li key={chat.id} className="text-sm">
+                    <span className="block truncate">
                       {chat.name}{" "}
                       <span dir="ltr" className="text-xs text-ink-muted tabular-nums">
                         {chat.id}
                       </span>
                     </span>
-                    <form action={addTelegramAdminAction}>
+                    <form action={addTelegramAdminAction} className="mt-1 flex gap-2">
                       <input type="hidden" name="chatId" value={chat.id} />
-                      <SaveButton toast="המנהל נוסף" className="rounded-full border-[1.5px] border-clay px-3 py-1 text-xs font-semibold text-clay-deep hover:bg-clay hover:text-white">
+                      <input
+                        name="name"
+                        defaultValue={suggestName(chat.name)}
+                        placeholder="שם משתמש"
+                        className="admin-input flex-1 py-1 text-xs"
+                      />
+                      <SaveButton toast="המנהל נוסף" className="shrink-0 rounded-full border-[1.5px] border-clay px-3 py-1 text-xs font-semibold text-clay-deep hover:bg-clay hover:text-white">
                         הוסף כמנהל
                       </SaveButton>
                     </form>

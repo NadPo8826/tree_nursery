@@ -12,19 +12,53 @@ import { repo } from "@/lib/db";
  * Only these IDs get secretary access; everyone else gets a polite brush-off.
  */
 
-function envAdminIds(): string[] {
-  const multi = process.env.TELEGRAM_ADMIN_CHAT_IDS ?? "";
-  const single = process.env.TELEGRAM_CHAT_ID ?? "";
-  return [...multi.split(","), single].map((s) => s.trim()).filter(Boolean);
+/** A named admin: entries are "name:chatId" (bare "chatId" = unnamed, bot-only). */
+export interface AdminEntry {
+  name: string; // login username; "" = can talk to the bot but not log in by name
+  chatId: string;
+}
+
+export function parseAdminEntries(raw: string): AdminEntry[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((item) => {
+      const sep = item.indexOf(":");
+      return sep > 0
+        ? { name: item.slice(0, sep).trim(), chatId: item.slice(sep + 1).trim() }
+        : { name: "", chatId: item };
+    })
+    .filter((e) => /^-?\d{5,15}$/.test(e.chatId));
+}
+
+function envAdminEntries(): AdminEntry[] {
+  const multi = parseAdminEntries(process.env.TELEGRAM_ADMIN_CHAT_IDS ?? "");
+  const single = (process.env.TELEGRAM_CHAT_ID ?? "").trim();
+  return single ? [...multi, { name: "", chatId: single }] : multi;
+}
+
+export async function adminEntries(): Promise<AdminEntry[]> {
+  const settings = await repo.getSettings();
+  const all = [...envAdminEntries(), ...parseAdminEntries(settings.telegramAdminIds ?? "")];
+  // dedupe by chat id; a named entry wins over an unnamed one
+  const byId = new Map<string, AdminEntry>();
+  for (const entry of all) {
+    const existing = byId.get(entry.chatId);
+    if (!existing || (!existing.name && entry.name)) byId.set(entry.chatId, entry);
+  }
+  return [...byId.values()];
 }
 
 export async function adminChatIds(): Promise<string[]> {
-  const settings = await repo.getSettings();
-  const fromDb = (settings.telegramAdminIds ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return [...new Set([...envAdminIds(), ...fromDb])];
+  return (await adminEntries()).map((e) => e.chatId);
+}
+
+/** Login lookup: username → their own Telegram chat (case-insensitive). */
+export async function findAdminByName(name: string): Promise<AdminEntry | undefined> {
+  const clean = name.trim().toLowerCase();
+  if (!clean) return undefined;
+  return (await adminEntries()).find((e) => e.name.toLowerCase() === clean);
 }
 
 export async function isAdminChat(chatId: string | number): Promise<boolean> {

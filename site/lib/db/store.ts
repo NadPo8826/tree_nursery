@@ -93,7 +93,7 @@ export interface Settings {
    * Telegram secretary config (/admin/telegram). Admin chat IDs here are
    * combined with the env-var list (env = tamper-proof bootstrap).
    */
-  telegramAdminIds: string; // comma-separated chat IDs
+  telegramAdminIds: string; // comma-separated "username:chatId" (legacy bare IDs ok)
   digestHour: number; // Israel-time hour for the morning digest; -1 = off
   nagAfterHours: number; // nag when a lead stays "new" this long; 0 = off
   quoteTemplateHe: string; // owner's quote-email template for the secretary

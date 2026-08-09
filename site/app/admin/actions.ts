@@ -20,14 +20,17 @@ import type { Guide, Project, Tree } from "@/lib/types";
 import { headers } from "next/headers";
 import {
   checkPassword,
+  clearPendingLogin,
   createSession,
   destroySession,
+  getPendingLogin,
   isAuthenticated,
   isTelegramLoginAvailable,
   issueTelegramLoginCode,
+  setPendingLogin,
   verifyTelegramLoginCode,
 } from "@/lib/auth";
-import { tgSendToAdmins } from "@/lib/telegram";
+import { adminEntries, findAdminByName, tgSend } from "@/lib/telegram";
 
 async function requireAdmin(): Promise<void> {
   if (!(await isAuthenticated())) redirect("/admin/login");
@@ -37,46 +40,91 @@ async function requireAdmin(): Promise<void> {
 const loginFails = new Map<string, number[]>();
 const LOGIN_WINDOW_MS = 15 * 60_000;
 
+function loginCodeMessage(code: string): string {
+  return `קוד הכניסה שלך לניהול האתר: ${code}\nתקף ל־5 דקות. אם לא ניסית להתחבר עכשיו — התעלם מההודעה.`;
+}
+
+/** A Telegram outage must fail the login gracefully, never 500 it. */
+async function sendLoginCode(username: string, chatId: string): Promise<boolean> {
+  try {
+    await tgSend(chatId, loginCodeMessage(issueTelegramLoginCode(username)));
+    return true;
+  } catch (e) {
+    console.error("login code send failed:", e);
+    return false;
+  }
+}
+
 export async function loginAction(formData: FormData): Promise<void> {
   const ip =
     (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
   const now = Date.now();
   const fails = (loginFails.get(ip) ?? []).filter((t) => now - t < LOGIN_WINDOW_MS);
   if (fails.length >= 5) redirect("/admin/login?error=locked");
-
-  const password = String(formData.get("password") ?? "");
-  const otp = String(formData.get("otp") ?? "");
-
-  // "send me a code in Telegram" — password must be right before we push
-  if (formData.get("sendTgCode") !== null) {
-    if (checkPassword(password) && isTelegramLoginAvailable()) {
-      const code = issueTelegramLoginCode();
-      await tgSendToAdmins(
-        `🔑 קוד כניסה לניהול האתר: ${code}\nתקף ל־5 דקות. לא ביקשתם? מישהו מנסה להיכנס עם הסיסמה שלכם — החליפו אותה.`,
-      );
-      redirect("/admin/login?tg=sent");
-    }
-    fails.push(now);
-    loginFails.set(ip, fails);
-    redirect("/admin/login?error=1");
-  }
-
-  // Evaluate both factors before deciding, so a failure doesn't reveal
-  // which one was wrong. MFA = the Telegram one-time code, active
-  // automatically whenever the bot is configured.
-  const secondFactor = isTelegramLoginAvailable()
-    ? verifyTelegramLoginCode(otp)
-    : true;
-  const ok = checkPassword(password) && secondFactor;
-  if (!ok) {
+  const recordFail = () => {
     fails.push(now);
     loginFails.set(ip, fails);
     if (loginFails.size > 1000) loginFails.clear();
+  };
+
+  const step = String(formData.get("step") ?? "password");
+
+  // ---- screen 2: verify the one-time code --------------------------------
+  if (step === "otp" || step === "resend" || step === "restart") {
+    if (step === "restart") {
+      await clearPendingLogin();
+      redirect("/admin/login");
+    }
+    const username = await getPendingLogin();
+    // pending cookie gone (expired / cleared) — back to screen 1
+    if (!username) redirect("/admin/login?error=expired");
+
+    if (step === "resend") {
+      // the signed pending cookie is proof of a fresh password check
+      const admin = await findAdminByName(username);
+      if (admin && !(await sendLoginCode(admin.name, admin.chatId))) {
+        redirect("/admin/login?step=otp&error=send");
+      }
+      redirect("/admin/login?step=otp&tg=sent");
+    }
+
+    const otp = String(formData.get("otp") ?? "");
+    if (!verifyTelegramLoginCode(username, otp)) {
+      recordFail();
+      redirect("/admin/login?step=otp&error=1");
+    }
+    loginFails.delete(ip);
+    await clearPendingLogin();
+    await createSession();
+    redirect("/admin");
+  }
+
+  // ---- screen 1: username + password -------------------------------------
+  const password = String(formData.get("password") ?? "");
+  const username = String(formData.get("username") ?? "").trim();
+
+  if (!(await isTelegramLoginAvailable())) {
+    // no bot / no named admins yet — password-only so a fresh setup can get in
+    if (!checkPassword(password)) {
+      recordFail();
+      redirect("/admin/login?error=1");
+    }
+    loginFails.delete(ip);
+    await createSession();
+    redirect("/admin");
+  }
+
+  const admin = await findAdminByName(username);
+  // one generic error for bad username OR bad password — never reveal which
+  if (!checkPassword(password) || !admin) {
+    recordFail();
     redirect("/admin/login?error=1");
   }
-  loginFails.delete(ip);
-  await createSession();
-  redirect("/admin");
+  if (!(await sendLoginCode(admin!.name, admin!.chatId))) {
+    redirect("/admin/login?error=send");
+  }
+  await setPendingLogin(admin!.name);
+  redirect("/admin/login?step=otp");
 }
 
 export async function logoutAction(): Promise<void> {
@@ -457,12 +505,27 @@ export async function addTelegramAdminAction(formData: FormData): Promise<void> 
   await requireAdmin();
   const id = String(formData.get("chatId") ?? "").trim();
   if (!/^-?\d{5,15}$/.test(id)) return; // Telegram chat IDs are numeric
+  // username doubles as the login identity — letters/digits/_/- only
+  // (":" and "," would break the storage format)
+  const name = String(formData.get("name") ?? "").trim();
+  if (!/^[\p{L}\p{N}_-]{2,20}$/u.test(name)) return;
+  const existing = await adminEntries();
+  // both must be unique: the chat id (one identity per person) and the
+  // username (login lookup must resolve to exactly one chat)
+  if (
+    existing.some(
+      (e) => e.chatId === id || (e.name && e.name.toLowerCase() === name.toLowerCase()),
+    )
+  ) {
+    return;
+  }
   const current = await repo.getSettings();
-  const ids = new Set(
-    current.telegramAdminIds.split(",").map((s) => s.trim()).filter(Boolean),
-  );
-  ids.add(id);
-  await repo.saveSettings({ ...current, telegramAdminIds: [...ids].join(",") });
+  const entries = current.telegramAdminIds
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  entries.push(`${name}:${id}`);
+  await repo.saveSettings({ ...current, telegramAdminIds: entries.join(",") });
   revalidatePath("/admin/telegram");
 }
 
@@ -470,11 +533,12 @@ export async function removeTelegramAdminAction(formData: FormData): Promise<voi
   await requireAdmin();
   const id = String(formData.get("chatId") ?? "").trim();
   const current = await repo.getSettings();
-  const ids = current.telegramAdminIds
+  // entries may be "name:id" or legacy bare "id" — match on the id part
+  const entries = current.telegramAdminIds
     .split(",")
     .map((s) => s.trim())
-    .filter((existing) => existing && existing !== id);
-  await repo.saveSettings({ ...current, telegramAdminIds: ids.join(",") });
+    .filter((entry) => entry && entry.split(":").pop() !== id);
+  await repo.saveSettings({ ...current, telegramAdminIds: entries.join(",") });
   revalidatePath("/admin/telegram");
 }
 

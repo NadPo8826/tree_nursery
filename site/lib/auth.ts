@@ -1,12 +1,20 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { adminEntries } from "@/lib/telegram";
 
 /**
- * Admin auth: one owner, password (ADMIN_PASSWORD) + a Telegram one-time
- * code as the second factor (active automatically once the bot and admin
- * chat IDs are configured). The session cookie is HMAC-signed, httpOnly,
- * and expires server-side too — a stolen cookie value goes stale even if
- * the browser lies about maxAge.
+ * Admin auth — two-screen login:
+ *   Screen 1: username + shared password (ADMIN_PASSWORD). The username
+ *     identifies WHICH admin is logging in (named entries in
+ *     TELEGRAM_ADMIN_CHAT_IDS / the admin panel, "name:chatId" format).
+ *   Screen 2: a 6-digit one-time code pushed to that admin's OWN Telegram
+ *     chat — never broadcast, so one admin can't complete another's login.
+ * Between the screens a short-lived HMAC-signed "pending" cookie carries
+ * the verified username. The session cookie is HMAC-signed, httpOnly, and
+ * expires server-side too — a stolen cookie value goes stale even if the
+ * browser lies about maxAge.
+ * If no named admin exists (bot unset, or only legacy bare chat IDs),
+ * login degrades to password-only so a fresh setup can still get in.
  */
 const COOKIE_NAME = "admin_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14; // two weeks
@@ -17,6 +25,17 @@ function secret(): string {
 
 function sign(value: string): string {
   return createHmac("sha256", secret()).update(value).digest("hex");
+}
+
+/**
+ * Secure-flag by ACTUAL protocol, not NODE_ENV: the owner runs `next start`
+ * on the nursery PC and logs in from a phone over plain-http LAN — a Secure
+ * cookie would silently never come back there. Behind real HTTPS (Vercel
+ * etc.) x-forwarded-proto is https and the flag turns on.
+ */
+async function cookieSecure(): Promise<boolean> {
+  const proto = (await headers()).get("x-forwarded-proto") ?? "";
+  return proto.split(",")[0]?.trim() === "https";
 }
 
 export function isConfigured(): boolean {
@@ -31,42 +50,95 @@ export function checkPassword(password: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/* ---- Telegram login code: the second factor ------------------------- */
-/* A 6-digit code pushed to the admin Telegram accounts; single-use,     */
-/* 5-minute expiry, 5 attempts. Available when the bot is configured.    */
+/* ---- Telegram login codes: the second factor, per user -------------- */
+/* 6-digit codes keyed by username; single-use, 5-minute expiry,         */
+/* 5 attempts. A code only ever goes to that username's own chat.        */
 
-let tgLoginCode: { hash: string; expiresAt: number; attempts: number } | null = null;
+const tgLoginCodes = new Map<
+  string,
+  { hash: string; expiresAt: number; attempts: number }
+>();
 
-export function isTelegramLoginAvailable(): boolean {
-  return Boolean(
-    process.env.TELEGRAM_BOT_TOKEN &&
-      (process.env.TELEGRAM_ADMIN_CHAT_IDS || process.env.TELEGRAM_CHAT_ID),
-  );
+/** OTP is on when the bot is configured AND at least one admin has a name. */
+export async function isTelegramLoginAvailable(): Promise<boolean> {
+  if (!process.env.TELEGRAM_BOT_TOKEN) return false;
+  return (await adminEntries()).some((e) => e.name);
 }
 
-export function issueTelegramLoginCode(): string {
+export function issueTelegramLoginCode(username: string): string {
+  // opportunistic GC so abandoned logins don't accumulate
+  for (const [key, entry] of tgLoginCodes) {
+    if (Date.now() > entry.expiresAt) tgLoginCodes.delete(key);
+  }
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  tgLoginCode = {
+  tgLoginCodes.set(username.trim().toLowerCase(), {
     hash: createHmac("sha256", secret()).update(code).digest("hex"),
     expiresAt: Date.now() + 5 * 60_000,
     attempts: 0,
-  };
+  });
   return code;
 }
 
-export function verifyTelegramLoginCode(code: string): boolean {
-  if (!tgLoginCode) return false;
-  if (Date.now() > tgLoginCode.expiresAt || tgLoginCode.attempts >= 5) {
-    tgLoginCode = null;
+export function verifyTelegramLoginCode(username: string, code: string): boolean {
+  const key = username.trim().toLowerCase();
+  const entry = tgLoginCodes.get(key);
+  if (!entry) return false;
+  if (Date.now() > entry.expiresAt || entry.attempts >= 5) {
+    tgLoginCodes.delete(key);
     return false;
   }
-  tgLoginCode.attempts++;
+  entry.attempts++;
   const given = createHmac("sha256", secret()).update(code.trim()).digest("hex");
   const a = Buffer.from(given);
-  const b = Buffer.from(tgLoginCode.hash);
+  const b = Buffer.from(entry.hash);
   const ok = a.length === b.length && timingSafeEqual(a, b);
-  if (ok) tgLoginCode = null; // single use
+  if (ok) tgLoginCodes.delete(key); // single use
   return ok;
+}
+
+/* ---- Pending-login cookie: bridges screen 1 → screen 2 -------------- */
+/* Set only after username+password passed; proves to the OTP screen     */
+/* who is mid-login. Signed, httpOnly, 10-minute expiry.                 */
+
+const PENDING_COOKIE = "admin_login_pending";
+const PENDING_TTL_MS = 10 * 60_000;
+
+export async function setPendingLogin(username: string): Promise<void> {
+  const payload = `${Buffer.from(username, "utf8").toString("base64url")}.${Date.now()}`;
+  (await cookies()).set(PENDING_COOKIE, `${payload}.${sign(payload)}`, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: await cookieSecure(),
+    maxAge: PENDING_TTL_MS / 1000,
+    path: "/admin",
+  });
+}
+
+/** Returns the mid-login username, or null if absent/tampered/expired. */
+export async function getPendingLogin(): Promise<string | null> {
+  const raw = (await cookies()).get(PENDING_COOKIE)?.value;
+  if (!raw) return null;
+  const i = raw.lastIndexOf(".");
+  if (i < 0) return null;
+  const payload = raw.slice(0, i);
+  const sig = raw.slice(i + 1);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(sign(payload));
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  const [encoded, issued] = payload.split(".");
+  const issuedAt = Number(issued);
+  if (!Number.isFinite(issuedAt) || Date.now() - issuedAt > PENDING_TTL_MS) {
+    return null;
+  }
+  try {
+    return Buffer.from(encoded, "base64url").toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+export async function clearPendingLogin(): Promise<void> {
+  (await cookies()).delete({ name: PENDING_COOKIE, path: "/admin" });
 }
 
 export async function createSession(): Promise<void> {
@@ -75,7 +147,7 @@ export async function createSession(): Promise<void> {
   cookieStore.set(COOKIE_NAME, `${payload}.${sign(payload)}`, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: await cookieSecure(),
     maxAge: 60 * 60 * 24 * 14, // two weeks
     path: "/",
   });
