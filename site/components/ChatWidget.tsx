@@ -137,6 +137,14 @@ export function ChatWidget() {
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight });
   }, [turns, busy, open]);
 
+  // On phones the panel is a full-width bottom sheet, and the accessibility
+  // launcher (fixed bottom-end) lands exactly on the send button. This class
+  // lets globals.css hide the launcher while the chat is open (mobile only).
+  useEffect(() => {
+    document.documentElement.classList.toggle("chat-open", open);
+    return () => document.documentElement.classList.remove("chat-open");
+  }, [open]);
+
   if (pathname.startsWith("/admin")) return null;
 
   async function send(text: string) {

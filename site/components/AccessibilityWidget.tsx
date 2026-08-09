@@ -151,6 +151,9 @@ const TOGGLES: { key: ToggleKey; label: string }[] = [
 export function AccessibilityWidget() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  // session-scoped hide: gone for this browsing session, back on the next
+  // visit — the widget must stay discoverable (IS 5568), so no permanent off
+  const [hidden, setHidden] = useState(false);
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const panelRef = useRef<HTMLDivElement>(null);
   const launcherRef = useRef<HTMLButtonElement>(null);
@@ -193,6 +196,7 @@ export function AccessibilityWidget() {
         setPrefs(p);
         applyPrefs(p);
       }
+      if (sessionStorage.getItem("a11y-hidden") === "1") setHidden(true);
     } catch {
       /* corrupt storage — defaults */
     }
@@ -205,7 +209,7 @@ export function AccessibilityWidget() {
     localStorage.setItem("a11y-prefs", JSON.stringify(next));
   }
 
-  if (pathname.startsWith("/admin")) return null;
+  if (pathname.startsWith("/admin") || hidden) return null;
 
   const big = prefs.bigPanel;
 
@@ -216,7 +220,7 @@ export function AccessibilityWidget() {
         onClick={() => setOpen(!open)}
         aria-label="אפשרויות נגישות"
         aria-expanded={open}
-        className="fixed bottom-5 end-5 z-50 grid size-12 place-items-center rounded-full bg-soil text-ink-cream shadow-2xl shadow-black/35 ring-[2.5px] ring-cream/90 transition-transform hover:-translate-y-0.5"
+        className="a11y-launcher fixed bottom-5 end-5 z-50 grid size-12 place-items-center rounded-full bg-soil text-ink-cream shadow-2xl shadow-black/35 ring-[2.5px] ring-cream/90 transition-transform hover:-translate-y-0.5"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
           <circle cx="12" cy="4.5" r="2.2" />
@@ -299,7 +303,7 @@ export function AccessibilityWidget() {
             </div>
           </div>
 
-          <div className={`flex items-center justify-between border-t border-line-sand px-4 py-3 ${big ? "text-sm" : "text-xs"}`}>
+          <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line-sand px-4 py-3 ${big ? "text-sm" : "text-xs"}`}>
             <Link
               href="/accessibility"
               className="text-clay-deep underline"
@@ -308,8 +312,23 @@ export function AccessibilityWidget() {
               הצהרת נגישות
             </Link>
             <button
-              onClick={() => update({ ...DEFAULT_PREFS, bigPanel: big })}
+              onClick={() => {
+                try {
+                  sessionStorage.setItem("a11y-hidden", "1");
+                } catch {
+                  /* storage blocked — hide for this page anyway */
+                }
+                setOpen(false);
+                setHidden(true);
+              }}
+              title="הכפתור יחזור בביקור הבא באתר"
               className="text-ink-muted hover:text-ink"
+            >
+              הסתרת הכפתור
+            </button>
+            <button
+              onClick={() => update({ ...DEFAULT_PREFS, bigPanel: big })}
+              className="ms-auto text-ink-muted hover:text-ink"
             >
               איפוס הכול
             </button>

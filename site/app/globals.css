@@ -95,6 +95,15 @@ html.a11y-lineheight body,
 html.a11y-lineheight body * {
   line-height: 2 !important;
 }
+/* While the chat bottom-sheet is open on phones it spans the full width,
+   and the accessibility launcher would sit exactly on the send button —
+   hide the launcher there. Desktop keeps both (chat is a 380px card on
+   the other side, no overlap). */
+@media (max-width: 639px) {
+  html.chat-open .a11y-launcher {
+    display: none;
+  }
+}
 html.a11y-noimg img {
   visibility: hidden !important;
 }
