@@ -12,6 +12,7 @@ import { AI_MODELS } from "@/lib/ai-models";
 import { tgSendToAdmins } from "@/lib/telegram";
 import { emailFrom, rtlEmailHtml } from "@/lib/notify";
 import { safeCalculate } from "@/lib/calc";
+import { runGeminiLoop } from "@/lib/gemini";
 
 /**
  * The owner-facing Telegram secretary. Runs ONLY for admin chat IDs —
@@ -655,6 +656,8 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
   return JSON.stringify({ error: "unknown tool" });
 }
 
+const SECRETARY_ERROR = "משהו הסתבך אצלי בדרך — נסה שוב.";
+
 export async function runSecretary(
   history: SecretaryTurn[],
   options: {
@@ -669,10 +672,26 @@ export async function runSecretary(
   const system = options.previousContext
     ? `${baseSystem}\n\n## השיחה הקודמת (הסתיימה — רקע בלבד)\nהשיחה הנוכחית חדשה, אך אם הבעלים מתייחס למשהו מהשיחה הקודמת — זה התמליל שלה:\n${options.previousContext}`
     : baseSystem;
-  // model picked in /admin/ai (Claude only); validated against the registry
-  const model = AI_MODELS.anthropic.some((m) => m.id === settings.aiSecretaryModel)
-    ? settings.aiSecretaryModel
-    : "claude-opus-5";
+  // model picked in /admin/ai (Claude or Gemini); validated against the registry
+  const configured = settings.aiSecretaryModel;
+  const isGemini = AI_MODELS.gemini.some((m) => m.id === configured);
+  const model =
+    isGemini || AI_MODELS.anthropic.some((m) => m.id === configured)
+      ? configured
+      : "claude-opus-5";
+
+  if (isGemini && process.env.GEMINI_API_KEY) {
+    return runGeminiLoop({
+      model,
+      system,
+      tools,
+      history,
+      execTool: (name, input) => runTool(name, input),
+      maxRounds: MAX_TOOL_ROUNDS,
+      maxOutputTokens: 1024,
+      errorReply: SECRETARY_ERROR,
+    });
+  }
   const messages: Anthropic.MessageParam[] = history.map((t) => ({
     role: t.role,
     content: t.content,

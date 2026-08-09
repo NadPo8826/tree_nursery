@@ -83,15 +83,31 @@ export default async function AdminAiPage() {
               defaultValue={s.aiSecretaryModel}
               className="admin-input"
             >
-              {AI_MODELS.anthropic.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.labelHe}
-                </option>
+              {(Object.keys(AI_MODELS) as AiProvider[]).map((provider) => (
+                <optgroup
+                  key={provider}
+                  label={
+                    PROVIDER_LABELS[provider] +
+                    (providerKeyConfigured(provider)
+                      ? ""
+                      : " — חסר מפתח API בשרת")
+                  }
+                >
+                  {AI_MODELS[provider].map((m) => (
+                    <option
+                      key={m.id}
+                      value={m.id}
+                      disabled={!providerKeyConfigured(provider)}
+                    >
+                      {m.labelHe}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             <span className="mt-1 block text-[11px] leading-relaxed">
-              המזכיר שולח מיילים בשמכם, לכן הוא רץ על Claude בלבד. ברירת
-              המחדל — Opus, החכם ביותר.
+              המזכיר פועל בשמכם (מיילים, עדכוני קטלוג) — מומלץ המנוע החכם
+              ביותר. ברירת המחדל: Claude Opus.
             </span>
           </label>
         </section>

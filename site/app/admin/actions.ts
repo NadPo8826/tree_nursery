@@ -523,7 +523,11 @@ export async function saveAiSettingsAction(formData: FormData): Promise<void> {
     settings.aiModel = aiModel;
   }
   const secretaryModel = String(formData.get("aiSecretaryModel") ?? "");
-  if (AI_MODELS.anthropic.some((m) => m.id === secretaryModel)) {
+  if (
+    [...AI_MODELS.anthropic, ...AI_MODELS.gemini].some(
+      (m) => m.id === secretaryModel,
+    )
+  ) {
     settings.aiSecretaryModel = secretaryModel;
   }
   await repo.saveSettings(settings);

@@ -91,6 +91,17 @@ export async function tgSendToAdmins(
   await Promise.allSettled(ids.map((id) => tgSend(id, text, keyboard)));
 }
 
+/** Shows "typing…" in the chat immediately — perceived-latency killer. */
+export function tgTyping(chatId: string | number): void {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+  fetch(`https://api.telegram.org/bot${token}/sendChatAction`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, action: "typing" }),
+  }).catch(() => {});
+}
+
 /** Clears the button's loading spinner and optionally flashes a toast. */
 export async function tgAnswerCallback(
   callbackQueryId: string,

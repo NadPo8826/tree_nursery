@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+﻿import Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "crypto";
 import { repo } from "@/lib/db";
 import type { Lead } from "@/lib/db";
@@ -31,6 +31,7 @@ import {
 } from "@/lib/ai-prompts";
 import type { Settings } from "@/lib/db";
 import { hasPromo } from "@/lib/catalog";
+import { runGeminiLoop } from "@/lib/gemini";
 
 const MAX_TOOL_ROUNDS = 5;
 
@@ -273,9 +274,30 @@ export async function runVisitorAssistant(
   const { provider, model } = resolveEngine(settings);
   const system = buildSystemPrompt(settings);
   const chatTools = buildTools(settings);
-  const run =
-    provider === "gemini" ? runGeminiConversation : runAnthropicConversation;
-  const { reply, leadSaved } = await run(
+
+  if (provider === "gemini") {
+    // the shared Gemini loop returns text only; lead saving is observed
+    // through the tool executor closure
+    let leadSaved = false;
+    const reply = await runGeminiLoop({
+      model,
+      system,
+      tools: chatTools,
+      history,
+      execTool: async (name, input) => {
+        const { result, leadSaved: saved } = await runTool(name, input, sourcePage);
+        if (saved) leadSaved = true;
+        return result;
+      },
+      callbacks,
+      maxRounds: MAX_TOOL_ROUNDS,
+      maxOutputTokens: 800,
+      errorReply: "סליחה, משהו הסתבך אצלי. אפשר פשוט להתקשר אלינו — נשמח לעזור!",
+    });
+    return { reply, leadSaved, provider, model };
+  }
+
+  const { reply, leadSaved } = await runAnthropicConversation(
     model,
     system,
     chatTools,
@@ -381,165 +403,6 @@ async function runAnthropicConversation(
       }
     }
     messages.push({ role: "user", content: toolResults });
-  }
-
-  return {
-    reply: "סליחה, משהו הסתבך אצלי. אפשר פשוט להתקשר אלינו — נשמח לעזור!",
-    leadSaved,
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/* Gemini backend — same brain, same tools, Google's engine.           */
-/* REST + SSE (no SDK dependency); function-calling loop mirrors the   */
-/* Anthropic one so guardrails and tool behavior stay identical.       */
-/* ------------------------------------------------------------------ */
-
-interface GeminiPart {
-  text?: string;
-  functionCall?: { name: string; args: Record<string, unknown> };
-  functionResponse?: { name: string; response: Record<string, unknown> };
-}
-interface GeminiContent {
-  role: "user" | "model";
-  parts: GeminiPart[];
-}
-
-/** Gemini's OpenAPI-subset schema doesn't know additionalProperties. */
-function toGeminiSchema(schema: Record<string, unknown>): Record<string, unknown> {
-  const { additionalProperties: _drop, ...rest } = schema;
-  const clean: Record<string, unknown> = { ...rest };
-  if (clean.properties) {
-    clean.properties = Object.fromEntries(
-      Object.entries(clean.properties as Record<string, Record<string, unknown>>).map(
-        ([k, v]) => [k, toGeminiSchema(v)],
-      ),
-    );
-  }
-  return clean;
-}
-
-async function runGeminiConversation(
-  model: string,
-  system: string,
-  tools: Anthropic.Tool[],
-  history: ChatTurn[],
-  sourcePage: string,
-  callbacks: AssistantStreamCallbacks,
-): Promise<{ reply: string; leadSaved: boolean }> {
-  const apiKey = process.env.GEMINI_API_KEY!;
-  const contents: GeminiContent[] = history.map((t) => ({
-    role: t.role === "assistant" ? "model" : "user",
-    parts: [{ text: t.content }],
-  }));
-  const functionDeclarations = tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    parameters: toGeminiSchema(t.input_schema as Record<string, unknown>),
-  }));
-
-  let leadSaved = false;
-
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: system }] },
-          contents,
-          tools: [{ functionDeclarations }],
-          generationConfig: { maxOutputTokens: 800 },
-        }),
-      },
-    );
-    if (!res.ok || !res.body) {
-      console.error("gemini request failed:", res.status, await res.text());
-      return {
-        reply: "סליחה, משהו הסתבך אצלי. אפשר פשוט להתקשר אלינו — נשמח לעזור!",
-        leadSaved,
-      };
-    }
-
-    // collect this round's parts while streaming visible text out
-    const modelParts: GeminiPart[] = [];
-    let sawTool = false;
-    let sentAny = false;
-    let textAcc = "";
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let sep;
-      while ((sep = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, sep).trim();
-        buffer = buffer.slice(sep + 1);
-        if (!line.startsWith("data:")) continue;
-        let chunk: {
-          candidates?: { content?: { parts?: GeminiPart[] } }[];
-        };
-        try {
-          chunk = JSON.parse(line.slice(5));
-        } catch {
-          continue;
-        }
-        for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
-          modelParts.push(part);
-          if (part.functionCall && !sawTool) {
-            sawTool = true;
-            if (sentAny) callbacks.onReset?.();
-          }
-          if (part.text && !sawTool) {
-            sentAny = true;
-            textAcc += part.text;
-            callbacks.onDelta?.(part.text);
-          } else if (part.text) {
-            textAcc += part.text;
-          }
-        }
-      }
-    }
-
-    const calls = modelParts.filter((p) => p.functionCall);
-    if (calls.length === 0) {
-      return {
-        reply: textAcc.trim() || "סליחה, לא הצלחתי לנסח תשובה. אפשר לנסות שוב?",
-        leadSaved,
-      };
-    }
-
-    contents.push({ role: "model", parts: modelParts });
-    const responses: GeminiPart[] = [];
-    for (const call of calls) {
-      const fc = call.functionCall!;
-      try {
-        const { result, leadSaved: saved } = await runTool(
-          fc.name,
-          fc.args ?? {},
-          sourcePage,
-        );
-        if (saved) leadSaved = true;
-        responses.push({
-          functionResponse: { name: fc.name, response: JSON.parse(result) },
-        });
-      } catch (e) {
-        console.error(`gemini tool ${fc.name} failed:`, e);
-        responses.push({
-          functionResponse: {
-            name: fc.name,
-            response: { error: "כלי נכשל זמנית" },
-          },
-        });
-      }
-    }
-    contents.push({ role: "user", parts: responses });
   }
 
   return {

@@ -8,6 +8,7 @@ import {
   logTelegram,
   tgAnswerCallback,
   tgSend,
+  tgTyping,
   type InlineKeyboard,
 } from "@/lib/telegram";
 import { runSecretary } from "@/lib/secretary";
@@ -104,25 +105,27 @@ async function converse(chatId: string | number, text: string): Promise<void> {
   };
   const history = [...activeTurns, userTurn];
 
+  tgTyping(chatId); // instant feedback while the model thinks
   try {
     const reply = await runSecretary(
       history.slice(-20).map(({ role, content }) => ({ role, content })),
       { previousContext },
+    );
+    // reply FIRST — persistence and logging happen after, off the hot path
+    await tgSend(
+      chatId,
+      reply,
+      isNewSession ? menuKeyboard(stored.length > 0) : undefined,
     );
     const assistantTurn: ConvoTurn = {
       role: "assistant",
       content: reply,
       at: new Date().toISOString(),
     };
-    await repo.saveTelegramConvo(chatKey, [...history, assistantTurn]);
+    repo
+      .saveTelegramConvo(chatKey, [...history, assistantTurn])
+      .catch((e) => console.error("convo save failed:", e));
     logTelegram("out", reply, chatId);
-    // a fresh session gets the quick-action menu under the reply (with a
-    // resume option when a previous conversation exists)
-    await tgSend(
-      chatId,
-      reply,
-      isNewSession ? menuKeyboard(stored.length > 0) : undefined,
-    );
   } catch (e) {
     console.error("secretary failed:", e);
     await tgSend(chatId, "משהו נכשל אצלי — נסה שוב עוד רגע.");
