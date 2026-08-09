@@ -40,6 +40,7 @@ export const repo: Repo = {
 export type {
   AiFeedback,
   ClientEntry,
+  ConvoTurn,
   Lead,
   LeadItem,
   LeadStatus,

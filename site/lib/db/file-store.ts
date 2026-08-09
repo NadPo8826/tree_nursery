@@ -54,6 +54,7 @@ const defaultSettings: Settings = {
   quoteTemplateHe: "",
   weeklyDay: 5, // Friday
   weeklyHour: 9,
+  convoTimeoutMin: 30,
 };
 
 const emptyTelegramState = { lastDigestDate: "", naggedLeadIds: [] };
@@ -84,6 +85,7 @@ async function load(): Promise<DbShape> {
     }));
     db.telegramState ??= { ...emptyTelegramState };
     db.telegramLog ??= [];
+    db.telegramConvos ??= {};
     db.analytics ??= {};
     return db;
   } catch {
@@ -105,6 +107,7 @@ async function load(): Promise<DbShape> {
       })),
       telegramState: { ...emptyTelegramState },
       telegramLog: [],
+      telegramConvos: {},
       analytics: {},
     };
     await save(fresh);
@@ -213,6 +216,14 @@ export const fileRepo: Repo = {
   },
   async getAnalytics() {
     return (await load()).analytics;
+  },
+  async getTelegramConvo(chatId) {
+    return (await load()).telegramConvos[chatId] ?? [];
+  },
+  async saveTelegramConvo(chatId, turns) {
+    const db = await load();
+    db.telegramConvos[chatId] = turns.slice(-30);
+    await save(db);
   },
   async appendTelegramLog(entry) {
     const db = await load();

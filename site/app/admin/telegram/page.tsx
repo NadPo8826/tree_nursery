@@ -169,7 +169,7 @@ export default async function AdminTelegramPage({
 
         {/* schedule + template */}
         <form
-          key={JSON.stringify({ d: settings.digestHour, n: settings.nagAfterHours, q: settings.quoteTemplateHe, w: settings.weeklyDay, wh: settings.weeklyHour })}
+          key={JSON.stringify({ d: settings.digestHour, n: settings.nagAfterHours, q: settings.quoteTemplateHe, w: settings.weeklyDay, wh: settings.weeklyHour, c: settings.convoTimeoutMin })}
           action={saveTelegramSettingsAction}
           className="space-y-5 rounded-2xl border-[1.5px] border-line-sand bg-card p-5"
         >
@@ -196,6 +196,20 @@ export default async function AdminTelegramPage({
                 className="admin-input"
               />
               <span className="mt-1 block text-[11px]">0 = כבוי. נשלחת פעם אחת לכל פנייה.</span>
+            </label>
+            <label className="block text-xs text-ink-muted">
+              סגירת שיחה אחרי (דקות ללא מענה)
+              <input
+                name="convoTimeoutMin"
+                type="number"
+                min={5}
+                defaultValue={settings.convoTimeoutMin}
+                className="admin-input"
+              />
+              <span className="mt-1 block text-[11px]">
+                אחרי שקט כזה — ההודעה הבאה פותחת שיחה חדשה (עם כפתורי פעולות),
+                והמזכיר עדיין זוכר את השיחה הקודמת כרקע.
+              </span>
             </label>
             <label className="block text-xs text-ink-muted">
               סיכום שבועי — יום

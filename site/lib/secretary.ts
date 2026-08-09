@@ -655,11 +655,20 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
   return JSON.stringify({ error: "unknown tool" });
 }
 
-export async function runSecretary(history: SecretaryTurn[]): Promise<string> {
-  const [system, settings] = await Promise.all([
+export async function runSecretary(
+  history: SecretaryTurn[],
+  options: {
+    /** Transcript of the previous (timed-out) conversation, for resumability. */
+    previousContext?: string;
+  } = {},
+): Promise<string> {
+  const [baseSystem, settings] = await Promise.all([
     buildSystemPrompt(),
     repo.getSettings(),
   ]);
+  const system = options.previousContext
+    ? `${baseSystem}\n\n## השיחה הקודמת (הסתיימה — רקע בלבד)\nהשיחה הנוכחית חדשה, אך אם הבעלים מתייחס למשהו מהשיחה הקודמת — זה התמליל שלה:\n${options.previousContext}`
+    : baseSystem;
   // model picked in /admin/ai (Claude only); validated against the registry
   const model = AI_MODELS.anthropic.some((m) => m.id === settings.aiSecretaryModel)
     ? settings.aiSecretaryModel

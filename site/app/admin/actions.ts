@@ -445,6 +445,7 @@ export async function saveTelegramSettingsAction(formData: FormData): Promise<vo
     nagAfterHours: Math.max(0, num(formData, "nagAfterHours", current.nagAfterHours)),
     weeklyDay: weeklyDay >= 0 && weeklyDay <= 6 ? weeklyDay : -1,
     weeklyHour: Math.min(23, Math.max(0, num(formData, "weeklyHour", current.weeklyHour))),
+    convoTimeoutMin: Math.max(5, num(formData, "convoTimeoutMin", current.convoTimeoutMin)),
     quoteTemplateHe: String(formData.get("quoteTemplateHe") ?? current.quoteTemplateHe)
       .trim()
       .slice(0, 4000),

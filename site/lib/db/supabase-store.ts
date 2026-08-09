@@ -3,6 +3,7 @@ import type { Guide, Project, Tree } from "@/lib/types";
 import type {
   AiFeedback,
   Analytics,
+  ConvoTurn,
   ClientEntry,
   Lead,
   LeadStatus,
@@ -254,6 +255,29 @@ export const supabaseRepo: Repo = {
       .maybeSingle();
     if (error) throw error;
     return (data?.value ?? {}) as Analytics;
+  },
+  async getTelegramConvo(chatId) {
+    const { data, error } = await db()
+      .from("documents")
+      .select("value")
+      .eq("key", "telegram_convos")
+      .maybeSingle();
+    if (error) throw error;
+    return ((data?.value ?? {}) as Record<string, ConvoTurn[]>)[chatId] ?? [];
+  },
+  async saveTelegramConvo(chatId, turns) {
+    const { data, error } = await db()
+      .from("documents")
+      .select("value")
+      .eq("key", "telegram_convos")
+      .maybeSingle();
+    if (error) throw error;
+    const all = (data?.value ?? {}) as Record<string, ConvoTurn[]>;
+    all[chatId] = turns.slice(-30);
+    const { error: upsertError } = await db()
+      .from("documents")
+      .upsert({ key: "telegram_convos", value: all });
+    if (upsertError) throw upsertError;
   },
   async getTelegramLog() {
     const { data, error } = await db()

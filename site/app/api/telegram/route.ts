@@ -1,34 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { repo } from "@/lib/db";
+import type { ConvoTurn } from "@/lib/db";
 import {
   downloadTelegramPhoto,
   isAdminChat,
   logTelegram,
   tgAnswerCallback,
   tgSend,
+  type InlineKeyboard,
 } from "@/lib/telegram";
-import { runSecretary, type SecretaryTurn } from "@/lib/secretary";
+import { runSecretary } from "@/lib/secretary";
 
 /**
  * Telegram webhook — the secretary's front door.
  * Security layers:
  * 1. x-telegram-bot-api-secret-token must equal TELEGRAM_WEBHOOK_SECRET
  *    (set when registering the webhook), so only Telegram can call us.
- * 2. Only chat IDs in TELEGRAM_ADMIN_CHAT_IDS reach the secretary; anyone
+ * 2. Only admin chat IDs (env ∪ admin panel) reach the secretary; anyone
  *    else gets one polite refusal per hour and is otherwise ignored.
  *
  * Identity is ONLY message.chat.id — a value Telegram's servers set and a
  * sender cannot forge. We deliberately never look at display names,
- * usernames, forwarded-from headers, or contact-card attachments: all of
- * those are sender-controlled content, so "sending the owner's contact" or
- * forwarding the owner's message proves nothing and grants nothing.
+ * usernames, forwarded-from headers, or contact-card attachments.
  *
- * Conversation memory is in-process (fine for a single dev/long-lived
- * server; on serverless it resets between cold starts — acceptable for a
- * secretary where each request is usually self-contained).
+ * Conversations are persisted in the DB with session semantics: after
+ * convoTimeoutMin minutes of silence a conversation is considered over —
+ * the next message starts a fresh session (with a quick-action menu), and
+ * the previous transcript rides along as background so the owner can still
+ * say "לגבי מה שדיברנו קודם".
  */
-const conversations = new Map<string, SecretaryTurn[]>();
 const refusedAt = new Map<string, number>();
 
 interface TgUpdate {
@@ -45,16 +46,73 @@ interface TgUpdate {
   };
 }
 
-/** Runs the secretary on a text and replies; shared by messages and buttons. */
-async function converse(chatKey: string, chatId: string | number, text: string) {
-  const history = conversations.get(chatKey) ?? [];
-  history.push({ role: "user", content: text.slice(0, 2000) });
+/** Quick actions offered at the start of every new conversation. */
+const MENU_KEYBOARD: InlineKeyboard = [
+  [{ text: "📥 פניות שלא טופלו", callback_data: "mn:leads" }],
+  [
+    { text: "📊 סיכום השבוע", callback_data: "mn:stats" },
+    { text: "⏰ תזכורות פתוחות", callback_data: "mn:reminders" },
+  ],
+  [
+    { text: "✉ הצעת מחיר", callback_data: "mn:quote" },
+    { text: "🌳 עדכון קטלוג", callback_data: "mn:catalog" },
+  ],
+];
+
+const MENU_PROMPTS: Record<string, string> = {
+  leads: "אילו פניות עוד לא טופלו?",
+  stats: "תן לי סיכום של השבוע האחרון — פניות ומבקרים באתר.",
+  reminders: "אילו תזכורות פתוחות יש לי?",
+  quote: "אני רוצה לשלוח הצעת מחיר. שאל אותי למי ועל מה.",
+  catalog: "אני רוצה לעדכן משהו בקטלוג (מחיר / מבצע / זמינות / עץ חדש). שאל אותי מה.",
+};
+
+function transcript(turns: ConvoTurn[]): string {
+  return turns
+    .slice(-10)
+    .map((t) => `${t.role === "user" ? "הבעלים" : "המזכיר"}: ${t.content.slice(0, 300)}`)
+    .join("\n");
+}
+
+/**
+ * Runs the secretary with session semantics and replies. Returns nothing;
+ * shared by text messages, photos, and button taps.
+ */
+async function converse(chatId: string | number, text: string): Promise<void> {
+  const chatKey = String(chatId);
+  const [settings, stored] = await Promise.all([
+    repo.getSettings(),
+    repo.getTelegramConvo(chatKey),
+  ]);
+  const timeoutMs = Math.max(5, settings.convoTimeoutMin || 30) * 60_000;
+  const lastAt = stored.length > 0 ? new Date(stored[stored.length - 1].at).getTime() : 0;
+  const isNewSession = stored.length === 0 || Date.now() - lastAt > timeoutMs;
+
+  const activeTurns: ConvoTurn[] = isNewSession ? [] : stored;
+  const previousContext =
+    isNewSession && stored.length > 0 ? transcript(stored) : undefined;
+
+  const userTurn: ConvoTurn = {
+    role: "user",
+    content: text.slice(0, 2000),
+    at: new Date().toISOString(),
+  };
+  const history = [...activeTurns, userTurn];
+
   try {
-    const reply = await runSecretary(history.slice(-20));
-    history.push({ role: "assistant", content: reply });
-    conversations.set(chatKey, history.slice(-20));
+    const reply = await runSecretary(
+      history.slice(-20).map(({ role, content }) => ({ role, content })),
+      { previousContext },
+    );
+    const assistantTurn: ConvoTurn = {
+      role: "assistant",
+      content: reply,
+      at: new Date().toISOString(),
+    };
+    await repo.saveTelegramConvo(chatKey, [...history, assistantTurn]);
     logTelegram("out", reply, chatId);
-    await tgSend(chatId, reply);
+    // a fresh session gets the quick-action menu under the reply
+    await tgSend(chatId, reply, isNewSession ? MENU_KEYBOARD : undefined);
   } catch (e) {
     console.error("secretary failed:", e);
     await tgSend(chatId, "משהו נכשל אצלי — נסה שוב עוד רגע.");
@@ -82,9 +140,19 @@ export async function POST(req: NextRequest) {
       await tgAnswerCallback(cb.id);
       return NextResponse.json({ ok: true });
     }
-    const [action, leadId, arg] = cb.data.split(":");
-    const lead = (await repo.getLeads()).find((l) => l.id === leadId);
+    const [action, arg1, arg2] = cb.data.split(":");
     logTelegram("in", `[כפתור] ${cb.data}`, cbChatId);
+
+    // quick-action menu buttons
+    if (action === "mn") {
+      await tgAnswerCallback(cb.id);
+      const prompt = MENU_PROMPTS[arg1];
+      if (prompt) await converse(cbChatId, prompt);
+      return NextResponse.json({ ok: true });
+    }
+
+    // lead-alert buttons carry a lead id
+    const lead = (await repo.getLeads()).find((l) => l.id === arg1);
     if (!lead) {
       await tgAnswerCallback(cb.id, "הפנייה כבר לא קיימת");
       return NextResponse.json({ ok: true });
@@ -96,7 +164,7 @@ export async function POST(req: NextRequest) {
       logTelegram("out", msg, cbChatId);
       await tgSend(cbChatId, msg);
     } else if (action === "rm") {
-      const hours = Number(arg) || 3;
+      const hours = Number(arg2) || 3;
       const reminders = await repo.getReminders();
       await repo.saveReminders([
         ...reminders,
@@ -115,10 +183,7 @@ export async function POST(req: NextRequest) {
       await tgSend(cbChatId, msg);
     } else if (action === "qt") {
       await tgAnswerCallback(cb.id);
-      // hand off to the secretary so the full quote flow (items, extras,
-      // template, approval) runs as a conversation
       await converse(
-        String(cbChatId),
         cbChatId,
         `אני רוצה לשלוח הצעת מחיר לפנייה #${lead.id.slice(0, 8)}. בדוק את הפנייה והנחה אותי.`,
       );
@@ -145,7 +210,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
     await converse(
-      String(chatId),
       chatId,
       `[שלחתי תמונה — נשמרה בנתיב ${saved}]\n${
         caption ||
@@ -158,9 +222,8 @@ export async function POST(req: NextRequest) {
   const text = update.message?.text?.trim();
   if (!text) return NextResponse.json({ ok: true });
 
-  const chatKey = String(chatId);
-
   if (!(await isAdminChat(chatId))) {
+    const chatKey = String(chatId);
     const last = refusedAt.get(chatKey) ?? 0;
     if (Date.now() - last > 3_600_000) {
       refusedAt.set(chatKey, Date.now());
@@ -173,25 +236,16 @@ export async function POST(req: NextRequest) {
   }
 
   if (text === "/start" || text === "/reset") {
-    conversations.set(chatKey, []);
+    await repo.saveTelegramConvo(String(chatId), []);
     await tgSend(
       chatId,
-      [
-        "שלום! אני המזכיר של המשתלה. אפשר לבקש ממני למשל:",
-        "• «אילו פניות עוד לא טופלו?»",
-        "• «פרטים על הפנייה של דוד»",
-        "• «סמן שדיברתי איתו»",
-        "• «תזכיר לי בעוד 3 שעות לחזור אליו»",
-        "• «שלח לו הצעת מחיר: 12,000 ₪ כולל הובלה ונטיעה»",
-        "• «כמה פניות נכנסו השבוע?»",
-        "",
-        "/reset — מתחיל שיחה נקייה",
-      ].join("\n"),
+      "שלום! אני המזכיר של המשתלה. במה אפשר לעזור?\nאפשר ללחוץ על כפתור — או פשוט לכתוב לי חופשי.",
+      MENU_KEYBOARD,
     );
     return NextResponse.json({ ok: true });
   }
 
   logTelegram("in", text, chatId);
-  await converse(chatKey, chatId, text);
+  await converse(chatId, text);
   return NextResponse.json({ ok: true });
 }

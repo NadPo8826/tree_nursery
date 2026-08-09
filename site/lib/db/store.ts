@@ -99,6 +99,7 @@ export interface Settings {
   quoteTemplateHe: string; // owner's quote-email template for the secretary
   weeklyDay: number; // Israel weekday for the weekly summary (0=Sun..6=Sat); -1 = off
   weeklyHour: number; // Israel-time hour for the weekly summary
+  convoTimeoutMin: number; // minutes of silence after which a secretary conversation is considered over
 }
 
 /** Cron bookkeeping so the digest fires once a day and nags fire once a lead. */
@@ -119,6 +120,13 @@ export interface AnalyticsDay {
   visitors: string[]; // salted hashes, capped
 }
 export type Analytics = Record<string, AnalyticsDay>; // key = YYYY-MM-DD
+
+/** A stored secretary conversation turn (persisted so context survives restarts). */
+export interface ConvoTurn {
+  role: "user" | "assistant";
+  content: string;
+  at: string; // ISO
+}
 
 /** One line in the secretary's activity log (/admin/telegram). */
 export interface TelegramLogEntry {
@@ -200,6 +208,7 @@ export interface DbShape {
   quotes: Quote[];
   telegramState: TelegramState;
   telegramLog: TelegramLogEntry[];
+  telegramConvos: Record<string, ConvoTurn[]>;
   analytics: Analytics;
 }
 
@@ -253,4 +262,7 @@ export interface Repo {
 
   trackPageview(day: string, path: string, visitorHash: string): Promise<void>;
   getAnalytics(): Promise<Analytics>;
+
+  getTelegramConvo(chatId: string): Promise<ConvoTurn[]>;
+  saveTelegramConvo(chatId: string, turns: ConvoTurn[]): Promise<void>;
 }
