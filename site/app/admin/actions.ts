@@ -20,12 +20,10 @@ import type { Guide, Project, Tree } from "@/lib/types";
 import { headers } from "next/headers";
 import {
   checkPassword,
-  checkTotp,
   createSession,
   destroySession,
   isAuthenticated,
   isTelegramLoginAvailable,
-  isTotpEnabled,
   issueTelegramLoginCode,
   verifyTelegramLoginCode,
 } from "@/lib/auth";
@@ -64,10 +62,10 @@ export async function loginAction(formData: FormData): Promise<void> {
   }
 
   // Evaluate both factors before deciding, so a failure doesn't reveal
-  // which one was wrong. The Telegram code satisfies MFA as an
-  // alternative to the authenticator app.
-  const secondFactor = isTotpEnabled()
-    ? checkTotp(otp) || verifyTelegramLoginCode(otp)
+  // which one was wrong. MFA = the Telegram one-time code, active
+  // automatically whenever the bot is configured.
+  const secondFactor = isTelegramLoginAvailable()
+    ? verifyTelegramLoginCode(otp)
     : true;
   const ok = checkPassword(password) && secondFactor;
   if (!ok) {

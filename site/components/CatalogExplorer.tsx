@@ -154,20 +154,26 @@ export function CatalogExplorer({
 
   return (
     <div className={rfq.length > 0 ? "pb-32" : ""}>
-      {/* Veterans — a dark "chapter" of their own, echoing the homepage's
-          soil sections. Premium framing for the one-of-a-kind trees. */}
+      {/* Veterans — gently elevated above the stock sections: a soft sand
+          wash and gold accents, not a dominant dark block */}
       {veterans.length > 0 && (
-        <section className="grainy mt-10 rounded-[24px_24px_24px_84px] bg-soil px-5 py-8 text-ink-cream sm:px-8">
+        <section className="mt-10 rounded-[24px_24px_24px_84px] border-[1.5px] border-gold/40 bg-sand/45 px-5 py-7 sm:px-8">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="font-display text-2xl text-gold-bright">
-              ✦ דיירים ותיקים
+            <h2 className="font-display text-2xl">
+              <span className="text-gold">✦</span> דיירים ותיקים
             </h2>
-            <p className="text-sm text-ink-cream-soft">
+            <p className="text-sm text-ink-muted">
               עצים יחידים במינם — כל אחד קיים פעם אחת, ונמכר אחד־אחד.
             </p>
           </div>
-          <div className="mt-1 h-0.5 w-14 rounded bg-gradient-to-l from-clay to-gold-bright" />
-          <div className="mt-6 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-1 h-0.5 w-14 rounded bg-gradient-to-l from-clay to-gold" />
+          <div
+            className={
+              veterans.length === 1
+                ? "mx-auto mt-6 max-w-sm"
+                : "mt-6 grid gap-8 sm:grid-cols-2 lg:grid-cols-3"
+            }
+          >
             {veterans.map((tree, i) => (
               <TreeCard
                 key={tree.slug}

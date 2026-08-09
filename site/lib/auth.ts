@@ -1,12 +1,12 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
-import { verifyTotp } from "@/lib/totp";
 
 /**
- * Admin auth: one owner, password (ADMIN_PASSWORD) + optional TOTP second
- * factor (ADMIN_TOTP_SECRET — generate with scripts/generate-totp-secret.mjs).
- * The session cookie is HMAC-signed, httpOnly, and expires server-side too —
- * a stolen cookie value goes stale even if the browser lies about maxAge.
+ * Admin auth: one owner, password (ADMIN_PASSWORD) + a Telegram one-time
+ * code as the second factor (active automatically once the bot and admin
+ * chat IDs are configured). The session cookie is HMAC-signed, httpOnly,
+ * and expires server-side too — a stolen cookie value goes stale even if
+ * the browser lies about maxAge.
  */
 const COOKIE_NAME = "admin_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14; // two weeks
@@ -31,17 +31,7 @@ export function checkPassword(password: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function isTotpEnabled(): boolean {
-  return Boolean(process.env.ADMIN_TOTP_SECRET);
-}
-
-export function checkTotp(code: string): boolean {
-  const secret = process.env.ADMIN_TOTP_SECRET;
-  if (!secret) return true; // MFA not configured — password-only mode
-  return verifyTotp(secret, code);
-}
-
-/* ---- Telegram login code: an alternative second factor -------------- */
+/* ---- Telegram login code: the second factor ------------------------- */
 /* A 6-digit code pushed to the admin Telegram accounts; single-use,     */
 /* 5-minute expiry, 5 attempts. Available when the bot is configured.    */
 

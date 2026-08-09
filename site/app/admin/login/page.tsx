@@ -3,7 +3,6 @@ import {
   isAuthenticated,
   isConfigured,
   isTelegramLoginAvailable,
-  isTotpEnabled,
 } from "@/lib/auth";
 import { loginAction } from "../actions";
 
@@ -37,16 +36,15 @@ export default async function AdminLoginPage({
           </label>
           {params.tg === "sent" && (
             <p className="rounded-xl bg-leaf/10 px-4 py-2.5 text-sm text-leaf">
-              קוד נשלח לטלגרם — הזינו אותו בשדה הקוד יחד עם הסיסמה.
+              קוד נשלח לטלגרם — הזינו אותו כאן יחד עם הסיסמה.
             </p>
           )}
-          {isTotpEnabled() && (
+          {isTelegramLoginAvailable() && (
             <label className="block text-sm">
-              קוד מאפליקציית האימות{isTelegramLoginAvailable() ? " או מטלגרם" : ""}
+              קוד חד־פעמי מטלגרם
               <input
                 type="text"
                 name="otp"
-                required
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 pattern="\d{6}"
@@ -54,6 +52,9 @@ export default async function AdminLoginPage({
                 dir="ltr"
                 className="mt-1 w-full rounded-xl border-[1.5px] border-line-warm bg-cream px-4 py-2.5 tracking-[0.4em]"
               />
+              <span className="mt-1 block text-xs text-ink-muted">
+                אין קוד? הזינו סיסמה ולחצו על "שלחו לי קוד" למטה.
+              </span>
             </label>
           )}
           {params.error === "locked" ? (
@@ -66,14 +67,14 @@ export default async function AdminLoginPage({
           <button className="min-h-11 w-full rounded-full bg-clay px-6 py-2.5 font-semibold text-white">
             כניסה
           </button>
-          {isTotpEnabled() && isTelegramLoginAvailable() && (
+          {isTelegramLoginAvailable() && (
             <button
               name="sendTgCode"
               value="1"
               formNoValidate
               className="w-full text-center text-xs text-clay-deep hover:underline"
             >
-              אין גישה לאפליקציית האימות? שלחו לי קוד בטלגרם
+              שלחו לי קוד בטלגרם
             </button>
           )}
         </form>
