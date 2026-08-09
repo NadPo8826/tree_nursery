@@ -154,44 +154,16 @@ export function CatalogExplorer({
 
   return (
     <div className={rfq.length > 0 ? "pb-32" : ""}>
-      {/* Veterans — gently elevated above the stock sections: a soft sand
-          wash and gold accents, not a dominant dark block */}
-      {veterans.length > 0 && (
-        <section className="mt-10 rounded-[24px_24px_24px_84px] border-[1.5px] border-gold/40 bg-sand/45 px-5 py-7 sm:px-8">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="font-display text-2xl">
-              <span className="text-gold">✦</span> דיירים ותיקים
-            </h2>
-            <p className="text-sm text-ink-muted">
-              עצים יחידים במינם — כל אחד קיים פעם אחת, ונמכר אחד־אחד.
-            </p>
-          </div>
-          <div className="mt-1 h-0.5 w-14 rounded bg-gradient-to-l from-clay to-gold" />
-          <div
-            className={
-              veterans.length === 1
-                ? "mx-auto mt-6 max-w-sm"
-                : "mt-6 grid gap-8 sm:grid-cols-2 lg:grid-cols-3"
-            }
-          >
-            {veterans.map((tree, i) => (
-              <TreeCard
-                key={tree.slug}
-                tree={tree}
-                index={i}
-                showPrices={showPrices}
-                actions={cardActions(tree)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Stock — varieties sold in quantities, grouped by category */}
-      {stock.length > 0 && (
-        <section className="mt-12">
-          <h2 className="font-display text-2xl">עצי מלאי</h2>
-          {stockGroups.map((group) => {
+      {/* One uniform list of collapsible groups; veterans are simply the
+          first group (with a gold ✦), not a special block */}
+      {(veterans.length > 0 || stock.length > 0) && (
+        <section className="mt-8">
+          {[
+            ...(veterans.length > 0
+              ? [{ category: "דיירים ותיקים", trees: veterans, isVeterans: true }]
+              : []),
+            ...stockGroups.map((g) => ({ ...g, isVeterans: false })),
+          ].map((group) => {
             const open = openCats.includes(group.category);
             return (
               <div key={group.category} id={`cat-${group.category}`} className="mt-6 scroll-mt-28">
@@ -205,11 +177,19 @@ export function CatalogExplorer({
                   }`}
                 >
                   <span>
-                    <span className="font-display text-xl">{group.category}</span>
+                    <span className="font-display text-xl">
+                      {group.isVeterans && <span className="text-gold">✦ </span>}
+                      {group.category}
+                    </span>
                     <span className="mt-1 block h-0.5 w-9 rounded bg-gradient-to-l from-clay to-gold" />
                   </span>
+                  {group.isVeterans && (
+                    <span className="hidden text-xs text-ink-muted sm:inline">
+                      עצים יחידים — כל אחד קיים פעם אחת
+                    </span>
+                  )}
                   <span className="ms-auto text-xs text-ink-muted tabular-nums">
-                    {group.trees.length} זנים
+                    {group.trees.length} {group.isVeterans ? "עצים" : "זנים"}
                   </span>
                   <svg
                     width="18"
