@@ -241,7 +241,12 @@ export async function POST(req: NextRequest) {
       chatId,
       `[שלחתי תמונה — נשמרה בנתיב ${saved}]\n${
         caption ||
-        "בלי כיתוב. שאל אותי: עץ חדש לקטלוג, או החלפת תמונה לעץ קיים (ולאיזה)?"
+        // no caption: nudge the model to use conversation context first —
+        // an explicit "ask me what to do" here overrides its own inference
+        // and forces a redundant question (e.g. right after the owner was
+        // asked to send a photo for a specific tree). Context resolves the
+        // TARGET; the confirm-before-write gate still applies.
+        "בלי כיתוב. אם מההקשר בשיחה ברור למה התמונה מיועדת (למשל ביקשת אותה הרגע לעץ מסוים) — אל תשאל שוב מה התמונה, אלא הצג מה בכוונתך לעשות איתה ובקש אישור. רק אם ההקשר לא ברור — שאל: עץ חדש לקטלוג או תמונה לעץ קיים?"
       }`,
     );
     return NextResponse.json({ ok: true });
