@@ -188,27 +188,41 @@ export async function GET(req: NextRequest) {
           pathTotals[p] = (pathTotals[p] ?? 0) + c;
         }
       }
+      // raw paths ("/tree/kermes-oak (7)") are hard to scan on a phone —
+      // resolve them to the names the owner actually knows
+      const weeklyTrees = await repo.getTrees();
+      const pageLabel = (p: string): string => {
+        if (p === "/") return "דף הבית";
+        if (p === "/catalog") return "קטלוג העצים";
+        const treeSlug = p.match(/^\/tree\/([^/]+)$/)?.[1];
+        if (treeSlug) {
+          const tree = weeklyTrees.find(
+            (t) => t.slug === decodeURIComponent(treeSlug),
+          );
+          if (tree) return tree.nameHe;
+        }
+        const category = p.match(/^\/catalog\/([^/]+)$/)?.[1];
+        if (category) return decodeURIComponent(category).replace(/-/g, " ");
+        return p;
+      };
       const topPages = Object.entries(pathTotals)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3)
-        .map(([p, c]) => `${p} (${c})`)
+        .map(([p, c]) => `• ${pageLabel(p)} — ${c} צפיות`);
+      const channels = Object.entries(byChannel)
+        .map(([ch, n]) => `${channelLabels[ch] ?? ch}: ${n}`)
         .join(" · ");
       const lines = [
-        `📋 סיכום השבוע — ${settings.siteName}:`,
-        `פניות חדשות: ${weekLeads.length}${
-          weekLeads.length > 0
-            ? " (" +
-              Object.entries(byChannel)
-                .map(([ch, n]) => `${channelLabels[ch] ?? ch}: ${n}`)
-                .join(", ") +
-              ")"
-            : ""
-        }`,
-        quotesThisWeek > 0 ? `הצעות מחיר שנשלחו: ${quotesThisWeek}` : null,
+        `📋 סיכום השבוע — ${settings.siteName}`,
+        "",
+        `📩 פניות חדשות: ${weekLeads.length}`,
+        weekLeads.length > 0 && channels ? `(${channels})` : null,
+        quotesThisWeek > 0 ? `✉️ הצעות מחיר שנשלחו: ${quotesThisWeek}` : null,
         planted > 0 ? `🌳 נטיעות מהפניות של השבוע: ${planted}` : null,
-        `מבקרים באתר: ${weekVisitors} · צפיות: ${weekViews}`,
-        topPages ? `עמודים מובילים: ${topPages}` : null,
-      ].filter(Boolean) as string[];
+        "",
+        `👥 באתר השבוע: ${weekVisitors} מבקרים · ${weekViews} צפיות עמוד`,
+        ...(topPages.length > 0 ? ["הדפים הנצפים ביותר:", ...topPages] : []),
+      ].filter((l) => l !== null) as string[];
       logTelegram("cron", "נשלח סיכום שבועי");
       await tgSendToAdmins(lines.join("\n"));
       state.lastWeeklyDate = ilDate;

@@ -283,7 +283,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "search_trees",
     description:
-      "חיפוש בקטלוג העצים — כולל מחירים מלאים ומלאי (תצוגת אדמין). שימושי להרכבת הצעות מחיר.",
+      "חיפוש בקטלוג העצים — שמות, מחירים מלאים וזמינות (במלאי/אזל בלבד — האתר אינו סופר כמויות יחידות). מקור האמת היחיד לפרטי עצים.",
     input_schema: {
       type: "object",
       properties: { query: { type: "string", description: "מילות חיפוש, ריק = הכול" } },
@@ -647,7 +647,13 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
         height_m: t.saleType === "unique" ? t.heightM || undefined : undefined,
         trunk_cm: t.saleType === "unique" ? t.trunkDiameterCm || undefined : undefined,
         price_from: `₪${t.price.toLocaleString("he-IL")}`,
-        availability: t.availability,
+        // spelled out so the model can't read a unit count into "מלאי"
+        availability:
+          t.availability === "sold"
+            ? "אזל"
+            : t.saleType === "unique"
+              ? "זמין (עץ יחיד)"
+              : "במלאי (ללא ספירת יחידות)",
         care_notes: t.aiNotesHe || undefined,
       }));
     return JSON.stringify({ trees: matches });
