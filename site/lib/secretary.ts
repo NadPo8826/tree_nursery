@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { randomUUID } from "crypto";
 import { repo } from "@/lib/db";
 import type { Lead, LeadStatus, Reminder } from "@/lib/db";
+import type { Tree } from "@/lib/types";
 import {
   DEFAULT_SECRETARY_SYSTEM,
   effectivePrompt,
@@ -53,6 +54,18 @@ function leadLine(lead: Lead): string {
   ];
   if (lead.interest) bits.push(lead.interest);
   return bits.join(" · ");
+}
+
+/** Tree lookup by slug or (partial) Hebrew name. */
+async function findTree(ref: string): Promise<Tree | undefined> {
+  const clean = ref.trim();
+  if (!clean) return undefined;
+  const trees = await repo.getTrees();
+  return (
+    trees.find((t) => t.slug === clean) ??
+    trees.find((t) => t.nameHe === clean) ??
+    trees.find((t) => t.nameHe.includes(clean) || clean.includes(t.nameHe))
+  );
 }
 
 function findLead(leads: Lead[], ref: string): Lead | undefined {
@@ -194,6 +207,66 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: "update_tree",
+    description:
+      "עדכון עץ בקטלוג: מחיר, מחיר מבצע, זמינות, הצגה. קרא רק אחרי שהצגת לבעלים בדיוק מה ישתנה והוא אישר. השינוי עולה לאתר מיד.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tree: { type: "string", description: "שם העץ או המזהה (slug)" },
+        price: { type: "number", description: "מחיר חדש (רשות)" },
+        promo_price: {
+          type: "number",
+          description: "מחיר מבצע (רשות; 0 = ביטול המבצע)",
+        },
+        availability: {
+          type: "string",
+          enum: ["available", "sold"],
+          description: "available = במלאי/מוצג, sold = אזל/מוסתר (רשות)",
+        },
+      },
+      required: ["tree"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "create_tree",
+    description:
+      "הוספת עץ חדש לקטלוג. אסוף מהבעלים לפחות: שם, אופן מכירה (דייר ותיק / מלאי), קטגוריה ומחיר. לדייר ותיק שאל גם (רשות): גובה, קוטר גזע, גיל, סיפור. אם צורפה תמונה — העבר את הנתיב שלה.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "שם העץ בעברית" },
+        sale_type: { type: "string", enum: ["unique", "stock"], description: "unique = דייר ותיק, stock = עץ מלאי" },
+        category: { type: "string", description: "קטגוריה בקטלוג, למשל עצי צל" },
+        price: { type: "number" },
+        story: { type: "string", description: "סיפור/תיאור (רשות)" },
+        ai_notes: { type: "string", description: "מידע טיפול לעוזר החכם (רשות)" },
+        height_m: { type: "number", description: "גובה במטרים (דייר ותיק, רשות)" },
+        trunk_cm: { type: "number", description: "קוטר גזע בס\"מ (דייר ותיק, רשות)" },
+        age_years: { type: "number", description: "גיל בשנים (דייר ותיק, רשות)" },
+        photo_url: { type: "string", description: "נתיב תמונה שצורפה, אם יש" },
+      },
+      required: ["name", "sale_type", "price"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "set_tree_photo",
+    description:
+      "הצבת תמונה לעץ קיים מתוך תמונה שהבעלים שלח בצ'אט. replace=true מחליף את התמונה הראשית; אחרת התמונה מתווספת לגלריה.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tree: { type: "string", description: "שם העץ או המזהה" },
+        photo_url: { type: "string", description: "נתיב התמונה שנשמרה" },
+        replace: { type: "boolean", description: "החלפת התמונה הראשית (ברירת מחדל: כן)" },
+      },
+      required: ["tree", "photo_url"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "calculate",
     description:
       "מחשבון מדויק. חובה להשתמש בו לכל חישוב בהצעת מחיר (שורות × כמויות, תוספות, סה\"כ) — לעולם אל תחשב בראש. תומך + - * / וסוגריים, למשל: 3*7800+2*6500+1400",
@@ -269,6 +342,11 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
       items: lead.items.map((i) => `${i.treeName} × ${i.qtyRange}`),
       isPro: lead.isPro,
       sourcePage: lead.sourcePage,
+      quotes_sent: (lead.quotesSent ?? []).map((q) => ({
+        at: ilTime(q.at),
+        via: q.via === "email" ? "נשלחה במייל" : "נמסרה לבעלים בטלגרם",
+        body: q.body.slice(0, 400),
+      })),
     });
   }
 
@@ -456,6 +534,93 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
       via: "email",
     });
     return JSON.stringify({ ok: true, sent_to: lead.email });
+  }
+
+  if (name === "update_tree") {
+    const tree = await findTree(String(input.tree ?? ""));
+    if (!tree) return JSON.stringify({ error: "עץ לא נמצא בקטלוג — בדוק את השם" });
+    const changes: string[] = [];
+    const next: Tree = { ...tree };
+    if (typeof input.price === "number" && input.price > 0) {
+      changes.push(`מחיר: ₪${tree.price.toLocaleString("he-IL")} ← ₪${input.price.toLocaleString("he-IL")}`);
+      next.price = input.price;
+    }
+    if (typeof input.promo_price === "number") {
+      if (input.promo_price === 0) {
+        if (next.promoPrice) changes.push("המבצע בוטל");
+        next.promoPrice = undefined;
+      } else {
+        changes.push(`מחיר מבצע: ₪${input.promo_price.toLocaleString("he-IL")}`);
+        next.promoPrice = input.promo_price;
+      }
+    }
+    if (input.availability === "available" || input.availability === "sold") {
+      const label =
+        input.availability === "sold"
+          ? tree.saleType === "unique" ? "מוסתר (נמכר)" : "אזל מהמלאי"
+          : tree.saleType === "unique" ? "מוצג" : "במלאי";
+      changes.push(`זמינות: ${label}`);
+      next.availability = input.availability;
+    }
+    if (changes.length === 0) return JSON.stringify({ error: "לא צוין שום שינוי" });
+    await repo.upsertTree(next);
+    return JSON.stringify({ ok: true, tree: tree.nameHe, changes });
+  }
+
+  if (name === "create_tree") {
+    const nameHe = String(input.name ?? "").trim().slice(0, 80);
+    const price = Number(input.price) || 0;
+    const saleType = input.sale_type === "unique" ? "unique" : "stock";
+    if (nameHe.length < 2 || price <= 0) {
+      return JSON.stringify({ error: "חסר שם או מחיר תקין" });
+    }
+    const trees = await repo.getTrees();
+    const code = String(Math.max(100, ...trees.map((t) => Number(t.code) || 0)) + 1);
+    const photoUrl = String(input.photo_url ?? "").trim();
+    const tree: Tree = {
+      slug: `tree-${code}`,
+      code,
+      nameHe,
+      speciesLatin: "",
+      categoryHe: String(input.category ?? "").trim().slice(0, 60),
+      aiNotesHe: String(input.ai_notes ?? "").trim().slice(0, 1500),
+      storyHe: String(input.story ?? "").trim().slice(0, 1000),
+      heightM: saleType === "unique" ? Number(input.height_m) || 0 : 0,
+      trunkDiameterCm: saleType === "unique" ? Number(input.trunk_cm) || 0 : 0,
+      ageYears: saleType === "unique" ? Number(input.age_years) || 0 : 0,
+      price,
+      priceMode: "from",
+      availability: "available",
+      saleType,
+      featured: false,
+      photos: photoUrl.startsWith("/uploads/") ? [photoUrl] : [],
+    };
+    await repo.upsertTree(tree);
+    return JSON.stringify({
+      ok: true,
+      tree: tree.nameHe,
+      type: saleType === "unique" ? "דייר ותיק" : "עץ מלאי",
+      note: "העץ באוויר. השלמות (תמונות נוספות, שם בוטני וכו') — בעמוד הקטלוג בניהול",
+    });
+  }
+
+  if (name === "set_tree_photo") {
+    const tree = await findTree(String(input.tree ?? ""));
+    if (!tree) return JSON.stringify({ error: "עץ לא נמצא בקטלוג — בדוק את השם" });
+    const photoUrl = String(input.photo_url ?? "").trim();
+    if (!photoUrl.startsWith("/uploads/")) {
+      return JSON.stringify({ error: "אין תמונה שמורה — שלח קודם תמונה בצ'אט" });
+    }
+    const replace = input.replace !== false;
+    const photos = replace
+      ? [photoUrl, ...tree.photos.slice(1)]
+      : [...tree.photos, photoUrl];
+    await repo.upsertTree({ ...tree, photos });
+    return JSON.stringify({
+      ok: true,
+      tree: tree.nameHe,
+      note: replace ? "התמונה הראשית הוחלפה" : "התמונה נוספה לגלריה",
+    });
   }
 
   if (name === "calculate") {

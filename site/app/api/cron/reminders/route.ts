@@ -138,6 +138,84 @@ export async function GET(req: NextRequest) {
     digestSent = true;
   }
 
+  // --- weekly summary at the configured Israel weekday+hour --------------
+  if (
+    settings.weeklyDay >= 0 &&
+    state.lastWeeklyDate !== ilDate &&
+    ilHour >= settings.weeklyHour
+  ) {
+    const ilWeekday = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "Asia/Jerusalem" }),
+    ).getDay();
+    if (ilWeekday === settings.weeklyDay) {
+      const weekMs = 7 * 86_400_000;
+      const weekLeads = leads.filter(
+        (l) => now - new Date(l.createdAt).getTime() < weekMs,
+      );
+      const byChannel = weekLeads.reduce<Record<string, number>>((acc, l) => {
+        acc[l.channel] = (acc[l.channel] ?? 0) + 1;
+        return acc;
+      }, {});
+      const channelLabels: Record<string, string> = {
+        form: "טפסים",
+        rfq: "בחירת עצים",
+        ai_chat: "צ'אט",
+        whatsapp_click: "וואטסאפ",
+        manual: "ידני/טלפון",
+      };
+      const quotesThisWeek = leads.reduce(
+        (acc, l) =>
+          acc +
+          (l.quotesSent ?? []).filter(
+            (q) => now - new Date(q.at).getTime() < weekMs,
+          ).length,
+        0,
+      );
+      const planted = weekLeads.filter((l) => l.status === "planted").length;
+      const analytics = await repo.getAnalytics();
+      let weekVisitors = 0;
+      let weekViews = 0;
+      const pathTotals: Record<string, number> = {};
+      for (let i = 0; i < 7; i++) {
+        const key = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Jerusalem",
+        }).format(new Date(now - i * 86_400_000));
+        const day = analytics[key];
+        if (!day) continue;
+        weekVisitors += day.visitors.length;
+        for (const [p, c] of Object.entries(day.paths)) {
+          weekViews += c;
+          pathTotals[p] = (pathTotals[p] ?? 0) + c;
+        }
+      }
+      const topPages = Object.entries(pathTotals)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([p, c]) => `${p} (${c})`)
+        .join(" · ");
+      const lines = [
+        `📋 סיכום השבוע — ${settings.siteName}:`,
+        `פניות חדשות: ${weekLeads.length}${
+          weekLeads.length > 0
+            ? " (" +
+              Object.entries(byChannel)
+                .map(([ch, n]) => `${channelLabels[ch] ?? ch}: ${n}`)
+                .join(", ") +
+              ")"
+            : ""
+        }`,
+        quotesThisWeek > 0 ? `הצעות מחיר שנשלחו: ${quotesThisWeek}` : null,
+        planted > 0 ? `🌳 נטיעות מהפניות של השבוע: ${planted}` : null,
+        `מבקרים באתר: ${weekVisitors} · צפיות: ${weekViews}`,
+        topPages ? `עמודים מובילים: ${topPages}` : null,
+      ].filter(Boolean) as string[];
+      logTelegram("cron", "נשלח סיכום שבועי");
+      await tgSendToAdmins(lines.join("\n"));
+      state.lastWeeklyDate = ilDate;
+      stateChanged = true;
+    }
+  }
+
   // --- nightly file-store backup (Supabase has its own managed backups) --
   const usesFileStore = !process.env.SUPABASE_URL;
   if (usesFileStore && state.lastBackupDate !== ilDate) {

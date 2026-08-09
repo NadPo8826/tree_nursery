@@ -97,6 +97,8 @@ export interface Settings {
   digestHour: number; // Israel-time hour for the morning digest; -1 = off
   nagAfterHours: number; // nag when a lead stays "new" this long; 0 = off
   quoteTemplateHe: string; // owner's quote-email template for the secretary
+  weeklyDay: number; // Israel weekday for the weekly summary (0=Sun..6=Sat); -1 = off
+  weeklyHour: number; // Israel-time hour for the weekly summary
 }
 
 /** Cron bookkeeping so the digest fires once a day and nags fire once a lead. */
@@ -104,6 +106,7 @@ export interface TelegramState {
   lastDigestDate: string; // YYYY-MM-DD Israel time
   naggedLeadIds: string[];
   lastBackupDate?: string; // YYYY-MM-DD — nightly file-store backup marker
+  lastWeeklyDate?: string; // YYYY-MM-DD — weekly summary marker
 }
 
 /**

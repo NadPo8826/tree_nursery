@@ -169,7 +169,7 @@ export default async function AdminTelegramPage({
 
         {/* schedule + template */}
         <form
-          key={JSON.stringify({ d: settings.digestHour, n: settings.nagAfterHours, q: settings.quoteTemplateHe })}
+          key={JSON.stringify({ d: settings.digestHour, n: settings.nagAfterHours, q: settings.quoteTemplateHe, w: settings.weeklyDay, wh: settings.weeklyHour })}
           action={saveTelegramSettingsAction}
           className="space-y-5 rounded-2xl border-[1.5px] border-line-sand bg-card p-5"
         >
@@ -196,6 +196,29 @@ export default async function AdminTelegramPage({
                 className="admin-input"
               />
               <span className="mt-1 block text-[11px]">0 = כבוי. נשלחת פעם אחת לכל פנייה.</span>
+            </label>
+            <label className="block text-xs text-ink-muted">
+              סיכום שבועי — יום
+              <select name="weeklyDay" defaultValue={settings.weeklyDay} className="admin-input">
+                <option value={-1}>כבוי</option>
+                {["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"].map(
+                  (day, i) => (
+                    <option key={i} value={i}>
+                      {day}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+            <label className="block text-xs text-ink-muted">
+              סיכום שבועי — שעה
+              <select name="weeklyHour" defaultValue={settings.weeklyHour} className="admin-input">
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {String(h).padStart(2, "0")}:00
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
 

@@ -52,6 +52,8 @@ const defaultSettings: Settings = {
   digestHour: 8,
   nagAfterHours: 48,
   quoteTemplateHe: "",
+  weeklyDay: 5, // Friday
+  weeklyHour: 9,
 };
 
 const emptyTelegramState = { lastDigestDate: "", naggedLeadIds: [] };

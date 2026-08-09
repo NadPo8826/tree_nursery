@@ -105,6 +105,37 @@ export async function tgAnswerCallback(
   }).catch((e) => console.error("answerCallbackQuery failed:", e));
 }
 
+/**
+ * Downloads a photo the admin sent to the bot and saves it under
+ * public/uploads. Returns the public path, or null on failure.
+ */
+export async function downloadTelegramPhoto(fileId: string): Promise<string | null> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) return null;
+  try {
+    const info = (await (
+      await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${encodeURIComponent(fileId)}`)
+    ).json()) as { ok: boolean; result?: { file_path?: string; file_size?: number } };
+    const filePath = info.result?.file_path;
+    if (!info.ok || !filePath) return null;
+    if ((info.result?.file_size ?? 0) > 10 * 1024 * 1024) return null;
+    const res = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
+    if (!res.ok) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const ext = filePath.match(/\.(jpe?g|png|webp)$/i)?.[0] ?? ".jpg";
+    const name = `tg-${Date.now()}${ext}`;
+    const { promises: fs } = await import("fs");
+    const path = await import("path");
+    const dir = path.join(process.cwd(), "public", "uploads");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, name), buffer);
+    return `/uploads/${name}`;
+  } catch (e) {
+    console.error("telegram photo download failed:", e);
+    return null;
+  }
+}
+
 /** Fire-and-forget activity log shown in /admin/telegram. */
 export function logTelegram(
   kind: "in" | "out" | "cron",

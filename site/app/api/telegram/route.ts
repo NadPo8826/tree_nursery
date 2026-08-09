@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { repo } from "@/lib/db";
 import {
+  downloadTelegramPhoto,
   isAdminChat,
   logTelegram,
   tgAnswerCallback,
@@ -33,6 +34,8 @@ const refusedAt = new Map<string, number>();
 interface TgUpdate {
   message?: {
     text?: string;
+    caption?: string;
+    photo?: { file_id: string }[];
     chat?: { id?: number | string };
   };
   callback_query?: {
@@ -126,9 +129,34 @@ export async function POST(req: NextRequest) {
   }
 
   const chatId = update.message?.chat?.id;
-  const text = update.message?.text?.trim();
   // Always answer Telegram 200 — otherwise it retries the same update forever
-  if (chatId === undefined || !text) return NextResponse.json({ ok: true });
+  if (chatId === undefined) return NextResponse.json({ ok: true });
+
+  // --- photo from the field: save it, then let the secretary decide what
+  // to do with it (new tree / replace an existing tree's photo) ----------
+  const photoSizes = update.message?.photo;
+  if (photoSizes && photoSizes.length > 0) {
+    if (!(await isAdminChat(chatId))) return NextResponse.json({ ok: true });
+    const saved = await downloadTelegramPhoto(photoSizes[photoSizes.length - 1].file_id);
+    const caption = update.message?.caption?.trim() ?? "";
+    logTelegram("in", `[תמונה] ${caption || "(ללא כיתוב)"}`, chatId);
+    if (!saved) {
+      await tgSend(chatId, "לא הצלחתי לשמור את התמונה — נסה שוב.");
+      return NextResponse.json({ ok: true });
+    }
+    await converse(
+      String(chatId),
+      chatId,
+      `[שלחתי תמונה — נשמרה בנתיב ${saved}]\n${
+        caption ||
+        "בלי כיתוב. שאל אותי: עץ חדש לקטלוג, או החלפת תמונה לעץ קיים (ולאיזה)?"
+      }`,
+    );
+    return NextResponse.json({ ok: true });
+  }
+
+  const text = update.message?.text?.trim();
+  if (!text) return NextResponse.json({ ok: true });
 
   const chatKey = String(chatId);
 

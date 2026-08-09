@@ -438,10 +438,13 @@ export async function saveTelegramSettingsAction(formData: FormData): Promise<vo
   await requireAdmin();
   const current = await repo.getSettings();
   const digestHour = num(formData, "digestHour", current.digestHour);
+  const weeklyDay = num(formData, "weeklyDay", current.weeklyDay);
   await repo.saveSettings({
     ...current,
     digestHour: digestHour >= 0 && digestHour <= 23 ? digestHour : -1,
     nagAfterHours: Math.max(0, num(formData, "nagAfterHours", current.nagAfterHours)),
+    weeklyDay: weeklyDay >= 0 && weeklyDay <= 6 ? weeklyDay : -1,
+    weeklyHour: Math.min(23, Math.max(0, num(formData, "weeklyHour", current.weeklyHour))),
     quoteTemplateHe: String(formData.get("quoteTemplateHe") ?? current.quoteTemplateHe)
       .trim()
       .slice(0, 4000),
