@@ -417,9 +417,9 @@ export default async function Home() {
                   <span className="rounded-full bg-gold-bright px-3 py-1 text-xs font-bold text-soil">
                     מבצע
                   </span>
-                  <h2 className="font-display text-2xl">מבצעי מכירה</h2>
+                  <h2 className="font-display text-2xl">מבצעים והצעות מיוחדות</h2>
                   <p className="text-sm text-ink-muted">
-                    המלאי מתחלף — מי שמקדים זוכה.
+                    מבחר עצים במחיר מיוחד, לתקופה מוגבלת.
                   </p>
                   <Link
                     href="/sales"

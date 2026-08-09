@@ -5,8 +5,8 @@ import { TreeCard } from "@/components/TreeCard";
 import { isOnSale } from "@/lib/catalog";
 
 export const metadata: Metadata = {
-  title: "מבצעי מכירה — עצים בוגרים",
-  description: "עצים בוגרים במחירי מבצע — מלאי מתחלף, כל עץ עם עמוד ייעודי ובקשת הצעת מחיר.",
+  title: "מבצעים והצעות מיוחדות — עצים בוגרים",
+  description: "עצים בוגרים במחיר מיוחד לתקופה מוגבלת — כל עץ עם עמוד ייעודי ואפשרות לבקשת הצעת מחיר.",
 };
 export const revalidate = 60;
 
@@ -19,9 +19,10 @@ export default async function SalesPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 pb-16 pt-10 md:px-12">
-      <h1 className="font-display text-4xl">מבצעי מכירה</h1>
+      <h1 className="font-display text-4xl">מבצעים והצעות מיוחדות</h1>
       <p className="mt-2 max-w-xl text-sm text-ink-muted">
-        עצים בוגרים במחיר מיוחד — המלאי מתחלף, מי שמקדים זוכה.
+        עצים בוגרים במחיר מיוחד, לתקופה מוגבלת. לכל עץ עמוד ייעודי — ונשמח
+        ללוות אתכם בבחירה.
       </p>
 
       {onSale.length === 0 ? (

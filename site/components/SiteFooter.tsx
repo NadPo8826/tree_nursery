@@ -64,7 +64,7 @@ export async function SiteFooter() {
             </Link>
           ))}
           <Link href="/sales" className={link}>
-            מבצעי מכירה
+            מבצעים והצעות מיוחדות
           </Link>
           <Link href="/catalog" className={`${link} text-gold-bright`}>
             לכל העצים ←

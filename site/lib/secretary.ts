@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
 import { repo } from "@/lib/db";
 import type { Lead, LeadStatus, Reminder } from "@/lib/db";
@@ -26,6 +27,20 @@ import { runGeminiLoop } from "@/lib/gemini";
 
 const MAX_TOOL_ROUNDS = 6;
 const client = new Anthropic();
+
+/**
+ * Catalog writes from Telegram must hit the public pages immediately —
+ * the same revalidation the admin panel runs on save. Without it the
+ * change lands in the DB but home/catalog keep serving their cached
+ * static copy until the next ISR window.
+ */
+function publishCatalogChange(): void {
+  try {
+    revalidatePath("/", "layout"); // prices/photos affect every page
+  } catch (e) {
+    console.error("revalidate after catalog change failed:", e);
+  }
+}
 
 export interface SecretaryTurn {
   role: "user" | "assistant";
@@ -565,6 +580,7 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
     }
     if (changes.length === 0) return JSON.stringify({ error: "לא צוין שום שינוי" });
     await repo.upsertTree(next);
+    publishCatalogChange();
     return JSON.stringify({ ok: true, tree: tree.nameHe, changes });
   }
 
@@ -597,6 +613,7 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
       photos: photoUrl.startsWith("/uploads/") ? [photoUrl] : [],
     };
     await repo.upsertTree(tree);
+    publishCatalogChange();
     return JSON.stringify({
       ok: true,
       tree: tree.nameHe,
@@ -617,6 +634,7 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
       ? [photoUrl, ...tree.photos.slice(1)]
       : [...tree.photos, photoUrl];
     await repo.upsertTree({ ...tree, photos });
+    publishCatalogChange();
     return JSON.stringify({
       ok: true,
       tree: tree.nameHe,
