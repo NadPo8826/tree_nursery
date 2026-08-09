@@ -47,17 +47,22 @@ interface TgUpdate {
 }
 
 /** Quick actions offered at the start of every new conversation. */
-const MENU_KEYBOARD: InlineKeyboard = [
-  [{ text: "📥 פניות שלא טופלו", callback_data: "mn:leads" }],
-  [
-    { text: "📊 סיכום השבוע", callback_data: "mn:stats" },
-    { text: "⏰ תזכורות פתוחות", callback_data: "mn:reminders" },
-  ],
-  [
-    { text: "✉ הצעת מחיר", callback_data: "mn:quote" },
-    { text: "🌳 עדכון קטלוג", callback_data: "mn:catalog" },
-  ],
-];
+function menuKeyboard(hasPrevious: boolean): InlineKeyboard {
+  return [
+    ...(hasPrevious
+      ? [[{ text: "↩ להמשיך את השיחה הקודמת", callback_data: "mn:resume" }]]
+      : []),
+    [{ text: "📥 פניות שלא טופלו", callback_data: "mn:leads" }],
+    [
+      { text: "📊 סיכום השבוע", callback_data: "mn:stats" },
+      { text: "⏰ תזכורות פתוחות", callback_data: "mn:reminders" },
+    ],
+    [
+      { text: "✉ הצעת מחיר", callback_data: "mn:quote" },
+      { text: "🌳 עדכון קטלוג", callback_data: "mn:catalog" },
+    ],
+  ];
+}
 
 const MENU_PROMPTS: Record<string, string> = {
   leads: "אילו פניות עוד לא טופלו?",
@@ -111,8 +116,13 @@ async function converse(chatId: string | number, text: string): Promise<void> {
     };
     await repo.saveTelegramConvo(chatKey, [...history, assistantTurn]);
     logTelegram("out", reply, chatId);
-    // a fresh session gets the quick-action menu under the reply
-    await tgSend(chatId, reply, isNewSession ? MENU_KEYBOARD : undefined);
+    // a fresh session gets the quick-action menu under the reply (with a
+    // resume option when a previous conversation exists)
+    await tgSend(
+      chatId,
+      reply,
+      isNewSession ? menuKeyboard(stored.length > 0) : undefined,
+    );
   } catch (e) {
     console.error("secretary failed:", e);
     await tgSend(chatId, "משהו נכשל אצלי — נסה שוב עוד רגע.");
@@ -145,6 +155,29 @@ export async function POST(req: NextRequest) {
 
     // quick-action menu buttons
     if (action === "mn") {
+      if (arg1 === "resume") {
+        // "un-expire" the stored conversation: touching the last turn's
+        // timestamp makes the next message continue it as an active session
+        const chatKey = String(cbChatId);
+        const stored = await repo.getTelegramConvo(chatKey);
+        if (stored.length === 0) {
+          await tgAnswerCallback(cb.id, "אין שיחה קודמת");
+          return NextResponse.json({ ok: true });
+        }
+        stored[stored.length - 1] = {
+          ...stored[stored.length - 1],
+          at: new Date().toISOString(),
+        };
+        await repo.saveTelegramConvo(chatKey, stored);
+        await tgAnswerCallback(cb.id, "ממשיכים ↩");
+        const lastAssistant = [...stored].reverse().find((t) => t.role === "assistant");
+        const msg = lastAssistant
+          ? `ממשיכים מאיפה שעצרנו. ההודעה האחרונה שלי הייתה:\n«${lastAssistant.content.slice(0, 500)}»`
+          : "ממשיכים מאיפה שעצרנו — במה עצרנו?";
+        logTelegram("out", msg, cbChatId);
+        await tgSend(cbChatId, msg);
+        return NextResponse.json({ ok: true });
+      }
       await tgAnswerCallback(cb.id);
       const prompt = MENU_PROMPTS[arg1];
       if (prompt) await converse(cbChatId, prompt);
@@ -236,11 +269,14 @@ export async function POST(req: NextRequest) {
   }
 
   if (text === "/start" || text === "/reset") {
-    await repo.saveTelegramConvo(String(chatId), []);
+    // /reset wipes memory; /start keeps it so "resume" stays available
+    if (text === "/reset") await repo.saveTelegramConvo(String(chatId), []);
+    const stored =
+      text === "/reset" ? [] : await repo.getTelegramConvo(String(chatId));
     await tgSend(
       chatId,
       "שלום! אני המזכיר של המשתלה. במה אפשר לעזור?\nאפשר ללחוץ על כפתור — או פשוט לכתוב לי חופשי.",
-      MENU_KEYBOARD,
+      menuKeyboard(stored.length > 0),
     );
     return NextResponse.json({ ok: true });
   }
