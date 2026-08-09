@@ -1,20 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { QtyRange, Tree } from "@/lib/types";
-import { QTY_RANGES } from "@/lib/types";
+import type { Tree } from "@/lib/types";
 import { whatsappLink } from "@/lib/site";
 import { TreeCard } from "@/components/TreeCard";
 import { LeadForm } from "@/components/LeadForm";
 
 interface RfqItem {
   slug: string;
-  qty: QtyRange;
+  qty: number; // exact unit count — the nursery quotes real numbers, not ranges
 }
 
 type BarPanel = "closed" | "details" | "quote";
 
-const RFQ_STORAGE_KEY = "rfq-v1";
+// v2: qty became an exact number (was a range string)
+const RFQ_STORAGE_KEY = "rfq-v2";
 
 export function CatalogExplorer({
   trees,
@@ -25,7 +25,7 @@ export function CatalogExplorer({
   showPrices?: boolean;
   whatsapp: string;
 }) {
-  const [qty, setQty] = useState<Record<string, QtyRange>>({});
+  const [qty, setQty] = useState<Record<string, number>>({});
   const [rfq, setRfq] = useState<RfqItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [panel, setPanel] = useState<BarPanel>("closed");
@@ -43,7 +43,12 @@ export function CatalogExplorer({
   useEffect(() => {
     try {
       const saved = localStorage.getItem(RFQ_STORAGE_KEY);
-      if (saved) setRfq(JSON.parse(saved));
+      if (saved) {
+        const parsed = (JSON.parse(saved) as RfqItem[]).filter(
+          (i) => typeof i.qty === "number" && i.qty >= 1,
+        );
+        setRfq(parsed);
+      }
     } catch {
       /* corrupt storage — start fresh */
     }
@@ -75,7 +80,7 @@ export function CatalogExplorer({
     setRfq((prev) =>
       prev.some((i) => i.slug === tree.slug)
         ? prev.filter((i) => i.slug !== tree.slug)
-        : [...prev, { slug: tree.slug, qty: qty[tree.slug] ?? "1" }],
+        : [...prev, { slug: tree.slug, qty: qty[tree.slug] ?? 1 }],
     );
   }
 
@@ -83,15 +88,13 @@ export function CatalogExplorer({
     .map((item) => ({ item, tree: trees.find((t) => t.slug === item.slug) }))
     .filter((x): x is { item: RfqItem; tree: Tree } => Boolean(x.tree));
 
-  const qtyLabel = (value: QtyRange) =>
-    QTY_RANGES.find((q) => q.value === value)?.label ?? value;
-
   const rfqMessage =
     "שלום, בחרתי עצים באתר ואשמח להצעת מחיר:\n" +
     rfqTrees
-      .map(
-        ({ item, tree }) =>
-          `- ${tree.nameHe} (עץ ${tree.code}) × ${qtyLabel(item.qty)}`,
+      .map(({ item, tree }) =>
+        tree.saleType === "unique"
+          ? `- ${tree.nameHe}${tree.code ? ` (עץ ${tree.code})` : ""}`
+          : `- ${tree.nameHe} × ${item.qty}`,
       )
       .join("\n");
 
@@ -115,10 +118,14 @@ export function CatalogExplorer({
         ) : (
           <label className="flex items-center gap-2 text-xs text-ink-muted">
             כמות
-            <select
-              value={qty[tree.slug] ?? "1"}
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={999}
+              value={qty[tree.slug] ?? 1}
               onChange={(e) => {
-                const value = e.target.value as QtyRange;
+                const value = Math.max(1, Math.min(999, Number(e.target.value) || 1));
                 setQty((p) => ({ ...p, [tree.slug]: value }));
                 setRfq((prev) =>
                   prev.map((item) =>
@@ -126,14 +133,8 @@ export function CatalogExplorer({
                   ),
                 );
               }}
-              className="rounded-full border-[1.5px] border-line-warm bg-card px-3 py-1.5 text-xs"
-            >
-              {QTY_RANGES.map((q) => (
-                <option key={q.value} value={q.value}>
-                  {q.label}
-                </option>
-              ))}
-            </select>
+              className="w-16 rounded-full border-[1.5px] border-line-warm bg-card px-3 py-1.5 text-center text-xs tabular-nums"
+            />
           </label>
         )}
         <button
@@ -145,7 +146,7 @@ export function CatalogExplorer({
               : "border-clay bg-transparent text-clay-deep hover:bg-clay hover:text-white"
           }`}
         >
-          {added ? "✓ נבחר" : "+ בחירה"}
+          {added ? "✓ במריצה" : "+ הוספה למריצה"}
         </button>
       </div>
     );
@@ -268,9 +269,7 @@ export function CatalogExplorer({
                     <span>
                       {tree.nameHe}
                       <span className="ms-2 text-xs text-ink-muted">
-                        {tree.saleType === "unique"
-                          ? "עץ יחיד"
-                          : `× ${qtyLabel(item.qty)}`}
+                        {tree.saleType === "unique" ? "עץ יחיד" : `× ${item.qty}`}
                       </span>
                     </span>
                     <button
@@ -301,7 +300,7 @@ export function CatalogExplorer({
                   .map(({ item, tree }) =>
                     tree.saleType === "unique"
                       ? tree.nameHe
-                      : `${tree.nameHe} ×${qtyLabel(item.qty)}`,
+                      : `${tree.nameHe} ×${item.qty}`,
                   )
                   .join(" · ")}
               </p>
@@ -312,7 +311,7 @@ export function CatalogExplorer({
                 items={rfqTrees.map(({ item, tree }) => ({
                   treeSlug: tree.slug,
                   treeName: tree.nameHe,
-                  qtyRange: tree.saleType === "unique" ? "עץ יחיד" : qtyLabel(item.qty),
+                  qtyRange: tree.saleType === "unique" ? "עץ יחיד" : String(item.qty),
                 }))}
                 submitLabel="שליחת הבקשה"
                 onSuccess={() => {
@@ -335,7 +334,9 @@ export function CatalogExplorer({
               aria-expanded={panel === "details"}
               className="flex min-h-11 items-center gap-2 text-sm"
             >
-              <b className="text-gold-bright">נבחרו {rfq.length} עצים</b>
+              <b className="text-gold-bright">
+                {rfq.length === 1 ? "עץ אחד במריצה" : `${rfq.length} עצים במריצה`}
+              </b>
               <span
                 aria-hidden
                 className={`text-xs transition-transform ${panel === "details" ? "rotate-180" : ""}`}

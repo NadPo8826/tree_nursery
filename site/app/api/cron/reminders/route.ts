@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { promises as fs } from "fs";
+import path from "path";
 import { repo } from "@/lib/db";
 import { logTelegram, tgSendToAdmins } from "@/lib/telegram";
 import { isOnSale } from "@/lib/catalog";
@@ -134,6 +136,27 @@ export async function GET(req: NextRequest) {
     state.lastDigestDate = ilDate;
     stateChanged = true;
     digestSent = true;
+  }
+
+  // --- nightly file-store backup (Supabase has its own managed backups) --
+  const usesFileStore = !process.env.SUPABASE_URL;
+  if (usesFileStore && state.lastBackupDate !== ilDate) {
+    try {
+      const dbPath = path.join(process.cwd(), ".data", "db.json");
+      const backupDir = path.join(process.cwd(), ".data", "backups");
+      await fs.mkdir(backupDir, { recursive: true });
+      await fs.copyFile(dbPath, path.join(backupDir, `db-${ilDate}.json`));
+      // keep the last 14 nightly copies
+      const backups = (await fs.readdir(backupDir)).filter((f) => f.startsWith("db-")).sort();
+      for (const old of backups.slice(0, Math.max(0, backups.length - 14))) {
+        await fs.unlink(path.join(backupDir, old));
+      }
+      logTelegram("cron", `גיבוי יומי של מסד הנתונים נשמר (db-${ilDate}.json)`);
+      state.lastBackupDate = ilDate;
+      stateChanged = true;
+    } catch (e) {
+      console.error("nightly backup failed:", e);
+    }
   }
 
   if (stateChanged) await repo.saveTelegramState(state);

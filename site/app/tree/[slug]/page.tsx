@@ -79,7 +79,11 @@ export default async function TreePage({
         <Link href="/catalog" className="hover:text-ink">
           קטלוג העצים
         </Link>{" "}
-        / <b className="text-ink">{tree.nameHe} · עץ {tree.code}</b>
+        /{" "}
+        <b className="text-ink">
+          {tree.nameHe}
+          {tree.saleType === "unique" && tree.code ? ` · עץ ${tree.code}` : ""}
+        </b>
       </nav>
 
       <div className="mt-6 grid items-start gap-10 md:grid-cols-2">
@@ -112,12 +116,9 @@ export default async function TreePage({
             )}
           </span>
           <h1 className="mt-3 font-display text-4xl">{tree.nameHe}</h1>
-          {((tree.saleType === "unique" && tree.speciesLatin) || tree.code) && (
+          {tree.saleType === "unique" && (tree.speciesLatin || tree.code) && (
             <p className="text-sm italic text-ink-muted" dir="ltr">
-              {[
-                tree.saleType === "unique" && tree.speciesLatin,
-                tree.code && `#${tree.code}`,
-              ]
+              {[tree.speciesLatin, tree.code && `#${tree.code}`]
                 .filter(Boolean)
                 .join(" · ")}
             </p>
@@ -173,7 +174,9 @@ export default async function TreePage({
             <a
               href={whatsappLink(
                 settings.whatsapp,
-                `שלום, ראיתי באתר את ${tree.nameHe} (עץ ${tree.code}) ורציתי לשאול…`,
+                `שלום, ראיתי באתר את ${tree.nameHe}${
+                  tree.saleType === "unique" && tree.code ? ` (עץ ${tree.code})` : ""
+                } ורציתי לשאול…`,
               )}
               className="border-b border-gold pb-0.5 text-sm"
             >

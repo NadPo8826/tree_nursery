@@ -5,6 +5,7 @@ import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { ChatWidget } from "@/components/ChatWidget";
 import { AccessibilityWidget } from "@/components/AccessibilityWidget";
+import { AnalyticsBeacon } from "@/components/AnalyticsBeacon";
 import { site } from "@/lib/site";
 import { repo } from "@/lib/db";
 import { isOnSale } from "@/lib/catalog";
@@ -64,6 +65,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <SiteFooter />
         <ChatWidget />
         <AccessibilityWidget />
+        <AnalyticsBeacon />
       </body>
     </html>
   );

@@ -41,6 +41,44 @@ export function checkTotp(code: string): boolean {
   return verifyTotp(secret, code);
 }
 
+/* ---- Telegram login code: an alternative second factor -------------- */
+/* A 6-digit code pushed to the admin Telegram accounts; single-use,     */
+/* 5-minute expiry, 5 attempts. Available when the bot is configured.    */
+
+let tgLoginCode: { hash: string; expiresAt: number; attempts: number } | null = null;
+
+export function isTelegramLoginAvailable(): boolean {
+  return Boolean(
+    process.env.TELEGRAM_BOT_TOKEN &&
+      (process.env.TELEGRAM_ADMIN_CHAT_IDS || process.env.TELEGRAM_CHAT_ID),
+  );
+}
+
+export function issueTelegramLoginCode(): string {
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  tgLoginCode = {
+    hash: createHmac("sha256", secret()).update(code).digest("hex"),
+    expiresAt: Date.now() + 5 * 60_000,
+    attempts: 0,
+  };
+  return code;
+}
+
+export function verifyTelegramLoginCode(code: string): boolean {
+  if (!tgLoginCode) return false;
+  if (Date.now() > tgLoginCode.expiresAt || tgLoginCode.attempts >= 5) {
+    tgLoginCode = null;
+    return false;
+  }
+  tgLoginCode.attempts++;
+  const given = createHmac("sha256", secret()).update(code.trim()).digest("hex");
+  const a = Buffer.from(given);
+  const b = Buffer.from(tgLoginCode.hash);
+  const ok = a.length === b.length && timingSafeEqual(a, b);
+  if (ok) tgLoginCode = null; // single use
+  return ok;
+}
+
 export async function createSession(): Promise<void> {
   const payload = `admin.${Date.now()}`;
   const cookieStore = await cookies();

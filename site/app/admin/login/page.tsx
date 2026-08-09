@@ -1,11 +1,16 @@
 import { redirect } from "next/navigation";
-import { isAuthenticated, isConfigured, isTotpEnabled } from "@/lib/auth";
+import {
+  isAuthenticated,
+  isConfigured,
+  isTelegramLoginAvailable,
+  isTotpEnabled,
+} from "@/lib/auth";
 import { loginAction } from "../actions";
 
 export default async function AdminLoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; setup?: string }>;
+  searchParams: Promise<{ error?: string; setup?: string; tg?: string }>;
 }) {
   if (await isAuthenticated()) redirect("/admin");
   const params = await searchParams;
@@ -30,9 +35,14 @@ export default async function AdminLoginPage({
               className="mt-1 w-full rounded-xl border-[1.5px] border-line-warm bg-cream px-4 py-2.5"
             />
           </label>
+          {params.tg === "sent" && (
+            <p className="rounded-xl bg-leaf/10 px-4 py-2.5 text-sm text-leaf">
+              קוד נשלח לטלגרם — הזינו אותו בשדה הקוד יחד עם הסיסמה.
+            </p>
+          )}
           {isTotpEnabled() && (
             <label className="block text-sm">
-              קוד מאפליקציית האימות
+              קוד מאפליקציית האימות{isTelegramLoginAvailable() ? " או מטלגרם" : ""}
               <input
                 type="text"
                 name="otp"
@@ -56,6 +66,16 @@ export default async function AdminLoginPage({
           <button className="min-h-11 w-full rounded-full bg-clay px-6 py-2.5 font-semibold text-white">
             כניסה
           </button>
+          {isTotpEnabled() && isTelegramLoginAvailable() && (
+            <button
+              name="sendTgCode"
+              value="1"
+              formNoValidate
+              className="w-full text-center text-xs text-clay-deep hover:underline"
+            >
+              אין גישה לאפליקציית האימות? שלחו לי קוד בטלגרם
+            </button>
+          )}
         </form>
       )}
     </div>

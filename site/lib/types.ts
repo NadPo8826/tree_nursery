@@ -10,14 +10,6 @@ export type PriceMode = "hidden" | "from" | "visible";
  */
 export type SaleType = "unique" | "stock";
 
-/** Quantity ranges buyers can request per tree in the RFQ list. */
-export type QtyRange = "1" | "2-5" | "6-20" | "20+";
-export const QTY_RANGES: { value: QtyRange; label: string }[] = [
-  { value: "1", label: "יח׳ 1" },
-  { value: "2-5", label: "2–5" },
-  { value: "6-20", label: "6–20" },
-  { value: "20+", label: "20+" },
-];
 
 export interface Tree {
   slug: string;

@@ -143,7 +143,8 @@ async function runTool(
     });
     const list = (matches.length > 0 ? matches : visible).slice(0, 10).map((t) => ({
       name: t.nameHe,
-      code: t.code,
+      // tag number is a per-specimen identity — veterans only
+      code: t.saleType === "unique" ? t.code : undefined,
       latin: t.saleType === "unique" ? t.speciesLatin || undefined : undefined,
       category: t.categoryHe,
       type: t.saleType === "unique" ? "דייר ותיק — עץ יחיד" : "עץ מלאי",

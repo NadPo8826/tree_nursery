@@ -24,7 +24,12 @@ import {
   createSession,
   destroySession,
   isAuthenticated,
+  isTelegramLoginAvailable,
+  isTotpEnabled,
+  issueTelegramLoginCode,
+  verifyTelegramLoginCode,
 } from "@/lib/auth";
+import { tgSendToAdmins } from "@/lib/telegram";
 
 async function requireAdmin(): Promise<void> {
   if (!(await isAuthenticated())) redirect("/admin/login");
@@ -43,9 +48,28 @@ export async function loginAction(formData: FormData): Promise<void> {
 
   const password = String(formData.get("password") ?? "");
   const otp = String(formData.get("otp") ?? "");
+
+  // "send me a code in Telegram" — password must be right before we push
+  if (formData.get("sendTgCode") !== null) {
+    if (checkPassword(password) && isTelegramLoginAvailable()) {
+      const code = issueTelegramLoginCode();
+      await tgSendToAdmins(
+        `🔑 קוד כניסה לניהול האתר: ${code}\nתקף ל־5 דקות. לא ביקשתם? מישהו מנסה להיכנס עם הסיסמה שלכם — החליפו אותה.`,
+      );
+      redirect("/admin/login?tg=sent");
+    }
+    fails.push(now);
+    loginFails.set(ip, fails);
+    redirect("/admin/login?error=1");
+  }
+
   // Evaluate both factors before deciding, so a failure doesn't reveal
-  // which one was wrong.
-  const ok = checkPassword(password) && checkTotp(otp);
+  // which one was wrong. The Telegram code satisfies MFA as an
+  // alternative to the authenticator app.
+  const secondFactor = isTotpEnabled()
+    ? checkTotp(otp) || verifyTelegramLoginCode(otp)
+    : true;
+  const ok = checkPassword(password) && secondFactor;
   if (!ok) {
     fails.push(now);
     loginFails.set(ip, fails);

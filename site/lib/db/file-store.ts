@@ -82,6 +82,7 @@ async function load(): Promise<DbShape> {
     }));
     db.telegramState ??= { ...emptyTelegramState };
     db.telegramLog ??= [];
+    db.analytics ??= {};
     return db;
   } catch {
     const fresh: DbShape = {
@@ -102,6 +103,7 @@ async function load(): Promise<DbShape> {
       })),
       telegramState: { ...emptyTelegramState },
       telegramLog: [],
+      analytics: {},
     };
     await save(fresh);
     return fresh;
@@ -192,6 +194,23 @@ export const fileRepo: Repo = {
   },
   async getTelegramLog() {
     return (await load()).telegramLog;
+  },
+  async trackPageview(day, path, visitorHash) {
+    const db = await load();
+    const entry = (db.analytics[day] ??= { paths: {}, visitors: [] });
+    entry.paths[path] = (entry.paths[path] ?? 0) + 1;
+    if (!entry.visitors.includes(visitorHash) && entry.visitors.length < 5000) {
+      entry.visitors.push(visitorHash);
+    }
+    // retention: keep the last 90 days
+    const days = Object.keys(db.analytics).sort();
+    for (const old of days.slice(0, Math.max(0, days.length - 90))) {
+      delete db.analytics[old];
+    }
+    await save(db);
+  },
+  async getAnalytics() {
+    return (await load()).analytics;
   },
   async appendTelegramLog(entry) {
     const db = await load();

@@ -102,9 +102,21 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: "visitor_stats",
+    description:
+      "נתוני מבקרים באתר לתקופה: כמה מבקרים וצפיות עמוד היו, ואילו עמודים הכי נצפו.",
+    input_schema: {
+      type: "object",
+      properties: {
+        days: { type: "number", description: "כמה ימים אחורה (ברירת מחדל 7)" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "lead_stats",
     description:
-      "סטטיסטיקת פניות לתקופה: כמה נכנסו, לפי ערוץ (טופס/בחירת עצים/צ'אט) ולפי סטטוס. הערה: אין עדיין נתוני מבקרים באתר (אנליטיקס לא מחובר) — רק פניות.",
+      "סטטיסטיקת פניות לתקופה: כמה נכנסו, לפי ערוץ (טופס/בחירת עצים/צ'אט) ולפי סטטוס.",
     input_schema: {
       type: "object",
       properties: {
@@ -286,7 +298,39 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
       by_channel: by((l) => l.channel),
       by_status: by((l) => statusHe(l.status)),
       pro_leads: leads.filter((l) => l.isPro).length,
-      note: "נתוני מבקרים באתר אינם זמינים — אנליטיקס טרם חובר",
+    });
+  }
+
+  if (name === "visitor_stats") {
+    const days = Math.min(Math.max(1, Number(input.days) || 7), 90);
+    const analytics = await repo.getAnalytics();
+    let visitors = 0;
+    let views = 0;
+    const pathTotals: Record<string, number> = {};
+    for (let i = 0; i < days; i++) {
+      const key = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Jerusalem",
+      }).format(new Date(Date.now() - i * 86_400_000));
+      const day = analytics[key];
+      if (!day) continue;
+      visitors += day.visitors.length;
+      for (const [path, count] of Object.entries(day.paths)) {
+        views += count;
+        pathTotals[path] = (pathTotals[path] ?? 0) + count;
+      }
+    }
+    return JSON.stringify({
+      period_days: days,
+      visitors,
+      pageviews: views,
+      top_pages: Object.entries(pathTotals)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([path, count]) => `${path}: ${count}`),
+      note:
+        visitors === 0
+          ? "אין נתונים לתקופה — המדידה החלה לאחרונה"
+          : "מבקרים = ייחודיים ליום (מבקר שחזר ביום אחר נספר שוב)",
     });
   }
 
@@ -431,7 +475,8 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
       .slice(0, 12)
       .map((t) => ({
         name: t.nameHe,
-        code: t.code,
+        // the tag number is a per-specimen identity — veterans only
+        code: t.saleType === "unique" ? t.code : undefined,
         type: t.saleType === "unique" ? "דייר ותיק" : "מלאי",
         height_m: t.saleType === "unique" ? t.heightM || undefined : undefined,
         trunk_cm: t.saleType === "unique" ? t.trunkDiameterCm || undefined : undefined,

@@ -103,7 +103,19 @@ export interface Settings {
 export interface TelegramState {
   lastDigestDate: string; // YYYY-MM-DD Israel time
   naggedLeadIds: string[];
+  lastBackupDate?: string; // YYYY-MM-DD — nightly file-store backup marker
 }
+
+/**
+ * First-party, privacy-light analytics: per-day pageview counts per path and
+ * daily unique visitors (daily-salted hashes — no raw IPs, no cookies).
+ * Kept 90 days.
+ */
+export interface AnalyticsDay {
+  paths: Record<string, number>;
+  visitors: string[]; // salted hashes, capped
+}
+export type Analytics = Record<string, AnalyticsDay>; // key = YYYY-MM-DD
 
 /** One line in the secretary's activity log (/admin/telegram). */
 export interface TelegramLogEntry {
@@ -185,6 +197,7 @@ export interface DbShape {
   quotes: Quote[];
   telegramState: TelegramState;
   telegramLog: TelegramLogEntry[];
+  analytics: Analytics;
 }
 
 /**
@@ -234,4 +247,7 @@ export interface Repo {
 
   getTelegramLog(): Promise<TelegramLogEntry[]>;
   appendTelegramLog(entry: TelegramLogEntry): Promise<void>;
+
+  trackPageview(day: string, path: string, visitorHash: string): Promise<void>;
+  getAnalytics(): Promise<Analytics>;
 }

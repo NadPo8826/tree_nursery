@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Guide, Project, Tree } from "@/lib/types";
 import type {
   AiFeedback,
+  Analytics,
   ClientEntry,
   Lead,
   LeadStatus,
@@ -227,6 +228,32 @@ export const supabaseRepo: Repo = {
       .from("documents")
       .upsert({ key: "telegram_state", value: state });
     if (error) throw error;
+  },
+  async trackPageview(day, path, visitorHash) {
+    const current = await supabaseRepo.getAnalytics();
+    const entry = current[day] ?? { paths: {}, visitors: [] };
+    entry.paths[path] = (entry.paths[path] ?? 0) + 1;
+    if (!entry.visitors.includes(visitorHash) && entry.visitors.length < 5000) {
+      entry.visitors.push(visitorHash);
+    }
+    const next: Analytics = { ...current, [day]: entry };
+    const days = Object.keys(next).sort();
+    for (const old of days.slice(0, Math.max(0, days.length - 90))) {
+      delete next[old];
+    }
+    const { error } = await db()
+      .from("documents")
+      .upsert({ key: "analytics", value: next });
+    if (error) throw error;
+  },
+  async getAnalytics() {
+    const { data, error } = await db()
+      .from("documents")
+      .select("value")
+      .eq("key", "analytics")
+      .maybeSingle();
+    if (error) throw error;
+    return (data?.value ?? {}) as Analytics;
   },
   async getTelegramLog() {
     const { data, error } = await db()
