@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = { title: "איך זה עובד" };
+export const revalidate = 60;
 
 const steps = [
   {

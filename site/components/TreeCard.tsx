@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Tree } from "@/lib/types";
+import { hasPromo } from "@/lib/catalog";
 
 /** Stock trees: in stock / out of stock. Veterans show no availability at all. */
 function stockLabel(a: Tree["availability"]): string {
@@ -38,6 +39,11 @@ export function TreeCard({
           className="relative h-52 bg-cover bg-center"
           style={{ backgroundImage: art }}
         >
+          {hasPromo(tree) && (
+            <span className="absolute bottom-3 start-3 rounded-full bg-gold-bright px-3 py-0.5 text-xs font-semibold text-soil">
+              מבצע
+            </span>
+          )}
           {tree.saleType === "unique" ? (
             <span className="absolute end-3 top-3 rounded-full bg-soil/85 px-3 py-0.5 text-xs text-gold-bright">
               ✦ דייר ותיק
@@ -54,13 +60,15 @@ export function TreeCard({
         </div>
         <div className="px-5 pt-5">
           <h3 className="font-display text-xl">{tree.nameHe}</h3>
-          {tree.speciesLatin && (
+          {tree.saleType === "unique" && tree.speciesLatin && (
             <p className="text-xs italic text-ink-muted" dir="ltr">
               {tree.speciesLatin}
             </p>
           )}
           {(() => {
-            // only specs that actually have data make it onto the card
+            // per-specimen specs are a veteran's story — even if a stock
+            // tree carries values in the DB, they are not shown
+            if (tree.saleType !== "unique") return null;
             const specs = [
               tree.ageYears > 0 && `גיל ~${tree.ageYears}`,
               tree.heightM > 0 && `גובה ${tree.heightM} מ׳`,
@@ -73,8 +81,20 @@ export function TreeCard({
           {showPrices && tree.priceMode !== "hidden" ? (
             <p className="mt-2 text-sm font-semibold text-clay-deep tabular-nums">
               {/* a veteran is one specific tree — its price is exact */}
-              {tree.saleType === "unique" ? "" : "החל מ־"}₪
-              {tree.price.toLocaleString("he-IL")}
+              {hasPromo(tree) ? (
+                <>
+                  <span className="me-2 font-normal text-ink-muted line-through">
+                    ₪{tree.price.toLocaleString("he-IL")}
+                  </span>
+                  {tree.saleType === "unique" ? "" : "החל מ־"}₪
+                  {tree.promoPrice!.toLocaleString("he-IL")}
+                </>
+              ) : (
+                <>
+                  {tree.saleType === "unique" ? "" : "החל מ־"}₪
+                  {tree.price.toLocaleString("he-IL")}
+                </>
+              )}
             </p>
           ) : (
             <p className="mt-2 text-sm text-ink-muted">למחיר — צרו איתנו קשר</p>

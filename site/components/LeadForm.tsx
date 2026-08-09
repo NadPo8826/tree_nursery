@@ -22,6 +22,7 @@ export function LeadForm({
   channel = "form",
   items = [],
   withEmail,
+  messageLabel,
   onSuccess,
 }: {
   interest: string;
@@ -31,6 +32,8 @@ export function LeadForm({
   items?: LeadFormItem[];
   /** Optional email input — on by default for quote requests, where the quote can arrive by mail. */
   withEmail?: boolean;
+  /** Label for the free-text field; override where "מה מעניין אתכם" makes no sense (e.g. RFQ). */
+  messageLabel?: string;
   onSuccess?: () => void;
 }) {
   const showEmail = withEmail ?? channel === "rfq";
@@ -80,7 +83,7 @@ export function LeadForm({
       <div className="rounded-2xl border-[1.5px] border-leaf bg-[#F1EFDC] p-6 text-center">
         <p className="font-display text-xl text-[#3E6231]">קיבלנו! ✓</p>
         <p className="mt-1 text-sm text-ink-soft">
-          נחזור אליכם עד יום העסקים הבא. מחכים לראותכם בין השורות.
+          נחזור אליכם בהקדם. מחכים לראותכם בין השורות.
         </p>
       </div>
     );
@@ -124,7 +127,11 @@ export function LeadForm({
         </label>
       )}
       <label className="block text-sm">
-        מה מעניין אתכם? <span className="text-ink-muted">(לא חובה)</span>
+        {messageLabel ?? (
+          <>
+            מה מעניין אתכם? <span className="text-ink-muted">(לא חובה)</span>
+          </>
+        )}
         <textarea name="message" rows={2} className="admin-input" />
       </label>
       {/* honeypot — hidden from humans, tempting to bots */}

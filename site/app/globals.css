@@ -56,6 +56,110 @@ body {
   color: var(--color-ink);
 }
 
+/* ---- accessibility modes (toggled by the AccessibilityWidget) ---- */
+html.a11y-font-lg {
+  font-size: 112.5%;
+}
+html.a11y-font-xl {
+  font-size: 127%;
+}
+html.a11y-links a {
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+}
+html.a11y-noanim *,
+html.a11y-noanim *::before,
+html.a11y-noanim *::after {
+  animation: none !important;
+  transition: none !important;
+}
+html.a11y-noanim {
+  scroll-behavior: auto !important;
+}
+/* grayscale the content regions — NOT body: a filter on body would become
+   the containing block for position:fixed elements and fling the floating
+   widgets (accessibility, chat) off-screen. The nav's children are filtered
+   individually so the mobile drawer (fixed) keeps its viewport anchoring. */
+html.a11y-gray main,
+html.a11y-gray footer,
+html.a11y-gray header > a,
+html.a11y-gray header > nav {
+  filter: grayscale(1);
+}
+html.a11y-spacing body,
+html.a11y-spacing body * {
+  letter-spacing: 0.12em !important;
+  word-spacing: 0.16em !important;
+}
+html.a11y-lineheight body,
+html.a11y-lineheight body * {
+  line-height: 2 !important;
+}
+html.a11y-noimg img {
+  visibility: hidden !important;
+}
+html.a11y-noimg [style*="background-image"] {
+  background-image: none !important;
+}
+html.a11y-readable body,
+html.a11y-readable body * {
+  font-family: Arial, Verdana, sans-serif !important;
+}
+html.a11y-cursor,
+html.a11y-cursor * {
+  cursor:
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24"><path d="M5 2l14 12h-8l-3 8z" fill="black" stroke="white" stroke-width="1.5"/></svg>')
+      4 2,
+    auto !important;
+}
+html.a11y-align body p,
+html.a11y-align body li,
+html.a11y-align body h1,
+html.a11y-align body h2,
+html.a11y-align body h3 {
+  text-align: right !important;
+}
+html.a11y-contrast {
+  --color-cream: #ffffff;
+  --color-sand: #f2f2f2;
+  --color-card: #ffffff;
+  --color-ink: #000000;
+  --color-ink-soft: #111111;
+  --color-ink-muted: #333333;
+  --color-clay: #9c4a1e;
+  --color-clay-deep: #7a3510;
+  --color-gold: #7a5200;
+  --color-leaf: #2f5423;
+  --color-line-sand: #8a8a8a;
+  --color-line-warm: #7a7a7a;
+}
+
+/* ---- clients marquee: content is duplicated and the track translates by
+   exactly half its width, so the loop is endless and seamless. Hover pauses;
+   the accessibility widget's "ביטול הנפשות" stops it (animation: none there);
+   OS-level reduced-motion slows it to a gentle drift instead of freezing. */
+.marquee-track {
+  animation: marquee 28s linear infinite;
+}
+.marquee-reverse {
+  animation-direction: reverse;
+}
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation-duration: 90s;
+  }
+}
+/* the track holds 6 copies of the content; shifting by 1/6 of its width
+   lands on an identical frame, so the loop is seamless and never runs out */
+@keyframes marquee {
+  to {
+    transform: translateX(16.6667%);
+  }
+}
+
 /* anchor links glide instead of jumping; off for reduced-motion users */
 @media (prefers-reduced-motion: no-preference) {
   html {

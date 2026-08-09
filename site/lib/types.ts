@@ -40,6 +40,8 @@ export interface Tree {
   rootBallWeightKg?: number;
   requirementsHe?: string;
   price: number;
+  /** Sale price — when set and lower than price, the tree shows on /sales with the old price struck through. */
+  promoPrice?: number;
   priceMode: PriceMode;
   availability: Availability;
   saleType: SaleType;

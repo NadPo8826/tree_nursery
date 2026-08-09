@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { repo } from "@/lib/db";
 import { whatsappLink } from "@/lib/site";
+import { hasPromo } from "@/lib/catalog";
+import { safeJsonLd } from "@/lib/seo";
 
 export const revalidate = 60;
 
@@ -31,18 +33,48 @@ export default async function TreePage({
   ]);
   if (!tree) notFound();
 
-  // only specs with actual data are rendered — empty rows are noise
+  // per-specimen specs are shown for veterans only (stock trees may carry
+  // values in the DB — e.g. after a type switch — but never display them);
+  // within that, only specs with actual data are rendered
   const specs: [string, string][] = [];
-  if (tree.ageYears > 0) specs.push(["גיל משוער", `~${tree.ageYears} שנה`]);
-  if (tree.heightM > 0) specs.push(["גובה נוכחי", `${tree.heightM} מ׳`]);
-  if (tree.trunkDiameterCm > 0) specs.push(["קוטר גזע", `${tree.trunkDiameterCm} ס״מ`]);
-  if (tree.rootBallWeightKg) {
-    specs.push(["משקל גוש", `~${(tree.rootBallWeightKg / 1000).toFixed(1)} טון`]);
+  if (tree.saleType === "unique") {
+    if (tree.ageYears > 0) specs.push(["גיל משוער", `~${tree.ageYears} שנה`]);
+    if (tree.heightM > 0) specs.push(["גובה נוכחי", `${tree.heightM} מ׳`]);
+    if (tree.trunkDiameterCm > 0) specs.push(["קוטר גזע", `${tree.trunkDiameterCm} ס״מ`]);
+    if (tree.rootBallWeightKg) {
+      specs.push(["משקל גוש", `~${(tree.rootBallWeightKg / 1000).toFixed(1)} טון`]);
+    }
+    if (tree.requirementsHe) specs.push(["דרישות", tree.requirementsHe]);
   }
-  if (tree.requirementsHe) specs.push(["דרישות", tree.requirementsHe]);
+
+  const productJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: tree.nameHe,
+    ...(tree.saleType === "unique" &&
+      tree.speciesLatin && { alternateName: tree.speciesLatin }),
+    ...(tree.storyHe && { description: tree.storyHe }),
+    ...(tree.photos[0] && { image: tree.photos[0] }),
+    ...(settings.showPrices &&
+      tree.priceMode !== "hidden" && {
+        offers: {
+          "@type": "Offer",
+          priceCurrency: "ILS",
+          price: hasPromo(tree) ? tree.promoPrice : tree.price,
+          availability:
+            tree.availability === "sold"
+              ? "https://schema.org/OutOfStock"
+              : "https://schema.org/InStock",
+        },
+      }),
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-6 pb-16 pt-8 md:px-12">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(productJsonLd) }}
+      />
       <nav className="text-xs text-ink-muted">
         <Link href="/catalog" className="hover:text-ink">
           קטלוג העצים
@@ -80,9 +112,12 @@ export default async function TreePage({
             )}
           </span>
           <h1 className="mt-3 font-display text-4xl">{tree.nameHe}</h1>
-          {(tree.speciesLatin || tree.code) && (
+          {((tree.saleType === "unique" && tree.speciesLatin) || tree.code) && (
             <p className="text-sm italic text-ink-muted" dir="ltr">
-              {[tree.speciesLatin, tree.code && `#${tree.code}`]
+              {[
+                tree.saleType === "unique" && tree.speciesLatin,
+                tree.code && `#${tree.code}`,
+              ]
                 .filter(Boolean)
                 .join(" · ")}
             </p>
@@ -106,18 +141,25 @@ export default async function TreePage({
 
           {settings.showPrices && tree.priceMode !== "hidden" ? (
             <p className="mt-5 font-display text-2xl font-semibold text-clay-deep tabular-nums">
+              {hasPromo(tree) && (
+                <>
+                  <span className="me-3 rounded-full bg-gold-bright px-3 py-0.5 align-middle font-body text-xs font-semibold text-soil">
+                    מבצע
+                  </span>
+                  <span className="me-2 font-body text-base font-normal text-ink-muted line-through">
+                    ₪{tree.price.toLocaleString("he-IL")}
+                  </span>
+                </>
+              )}
               {tree.saleType === "unique" ? "" : "החל מ־"}₪
-              {tree.price.toLocaleString("he-IL")}
+              {(hasPromo(tree) ? tree.promoPrice! : tree.price).toLocaleString("he-IL")}
               <span className="mt-1 block font-body text-xs font-normal text-ink-muted">
-                {tree.saleType === "unique"
-                  ? "מחיר העץ. הובלה, מנוף ונטיעה מתומחרים לפי תנאי השטח."
-                  : "המחיר הסופי נקבע לפי הגישה לשטח, המנוף ומרחק ההובלה"}
+                להצעת מחיר מסודרת — דברו איתנו.
               </span>
             </p>
           ) : (
             <p className="mt-5 text-sm text-ink-muted">
-              צרו איתנו קשר לגבי המחיר — הוא תלוי בגישה לשטח, במנוף ובמרחק
-              ההובלה. נחזור אליכם עם הצעה מסודרת.
+              למחיר — צרו איתנו קשר ונחזור אליכם עם הצעה מסודרת.
             </p>
           )}
 

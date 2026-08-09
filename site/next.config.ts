@@ -9,7 +9,31 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
 ];
 
+/**
+ * 301 map from the old domimtree.com URLs — becomes active the day the
+ * domain points at this site, so existing Google rankings transfer.
+ * Category targets assume the current admin category names; adjust if
+ * the owner renames categories before cutover.
+ */
+const oldSiteRedirects = [
+  { source: "/maturetrees", destination: "/catalog" },
+  { source: "/gallery", destination: "/catalog" },
+  { source: "/citrustrees1", destination: `/catalog/${encodeURIComponent("עצי-פרי-והדר")}` },
+  { source: "/fruit-trees", destination: `/catalog/${encodeURIComponent("עצי-פרי-והדר")}` },
+  { source: "/olive-trees", destination: `/catalog/${encodeURIComponent("עצי-זית")}` },
+  { source: "/olive-tree", destination: `/catalog/${encodeURIComponent("דיירים-ותיקים")}` },
+  { source: "/ornamental-trees", destination: `/catalog/${encodeURIComponent("עצי-נוי")}` },
+  { source: "/tropicaltrees", destination: "/catalog" },
+  { source: "/decoratedolivetree", destination: "/catalog" },
+  { source: "/specialsalespromotions", destination: "/sales" },
+  { source: "/service", destination: "/process" },
+  { source: "/gardenrenovation", destination: "/process" },
+  { source: "/contact", destination: "/visit" },
+  { source: "/ourblog", destination: "/guides" },
+].map((r) => ({ ...r, permanent: true }));
+
 const nextConfig: NextConfig = {
+  redirects: async () => oldSiteRedirects,
   headers: async () => [
     { source: "/:path*", headers: securityHeaders },
     // Admin pages must never land in any cache shared with other users

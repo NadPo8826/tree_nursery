@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 import { milestones } from "@/data/milestones";
 
 export const metadata: Metadata = { title: "הסיפור" };
+export const revalidate = 60;
 
 export default function AboutPage() {
 

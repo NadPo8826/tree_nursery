@@ -2,7 +2,9 @@ import { repo } from "@/lib/db";
 import { requireAdminPage } from "@/lib/admin-guard";
 import { SaveButton } from "@/components/admin/SaveButton";
 import {
+  addClientAction,
   addHeroSlideAction,
+  deleteClientAction,
   removeHeroSlideAction,
   setSectionImageAction,
 } from "../actions";
@@ -51,7 +53,10 @@ function SectionImage({
 
 export default async function AdminMediaPage() {
   await requireAdminPage();
-  const media = await repo.getMedia();
+  const [media, clients] = await Promise.all([
+    repo.getMedia(),
+    repo.getClients(),
+  ]);
 
   return (
     <div>
@@ -141,6 +146,69 @@ export default async function AdminMediaPage() {
         <SectionImage title="אביב" section="season_spring" current={media.seasonImages.spring} />
         <SectionImage title="קיץ" section="season_summer" current={media.seasonImages.summer} />
         <SectionImage title="סתיו" section="season_autumn" current={media.seasonImages.autumn} />
+      </div>
+
+      <h2 className="mt-10 font-display text-2xl">בין לקוחותינו</h2>
+      <p className="mt-1 text-sm text-ink-muted">
+        הרצועה הנעה בעמוד הבית. לכל לקוח אפשר לוגו, שם, או שניהם. את הצגת
+        המקטע כולו מדליקים/מכבים בעמוד "הגדרות".
+      </p>
+      <div className="mt-4 max-w-2xl space-y-3">
+        {clients.map((client) => (
+          <div
+            key={client.id}
+            className="flex items-center gap-4 rounded-2xl border-[1.5px] border-line-sand bg-card p-4"
+          >
+            {client.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={client.logoUrl}
+                alt=""
+                className="h-10 w-16 rounded-lg bg-white object-contain"
+              />
+            ) : (
+              <span className="grid h-10 w-16 place-items-center rounded-lg bg-sand text-xs text-ink-muted">
+                טקסט
+              </span>
+            )}
+            <p className="min-w-0 flex-1 truncate text-sm font-semibold">
+              {client.nameHe || "(לוגו בלבד)"}
+            </p>
+            <form action={deleteClientAction}>
+              <input type="hidden" name="id" value={client.id} />
+              <SaveButton toast="הלקוח הוסר" className="text-xs text-red-700 hover:underline">
+                הסרה
+              </SaveButton>
+            </form>
+          </div>
+        ))}
+
+        <form
+          action={addClientAction}
+          className="grid gap-3 rounded-2xl border-[1.5px] border-dashed border-line-warm bg-card p-5"
+        >
+          <p className="font-semibold text-clay-deep">+ הוספת לקוח</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs text-ink-muted">
+              שם הלקוח (רשות אם יש לוגו)
+              <input name="nameHe" className="admin-input" />
+            </label>
+            <label className="block text-xs text-ink-muted">
+              לוגו (רשות אם יש שם)
+              <input
+                type="file"
+                name="logo"
+                accept="image/jpeg,image/png,image/webp"
+                className="mt-1 block text-xs"
+              />
+            </label>
+          </div>
+          <div>
+            <SaveButton toast="הלקוח נוסף" className="min-h-11 rounded-full bg-clay px-5 py-2 text-sm font-semibold text-white">
+              הוספה
+            </SaveButton>
+          </div>
+        </form>
       </div>
 
       <p className="mt-8 max-w-2xl text-xs text-ink-muted">

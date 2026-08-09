@@ -30,6 +30,7 @@ import {
   fillPlaceholders,
 } from "@/lib/ai-prompts";
 import type { Settings } from "@/lib/db";
+import { hasPromo } from "@/lib/catalog";
 
 const MAX_TOOL_ROUNDS = 5;
 
@@ -135,30 +136,38 @@ async function runTool(
     const matches = visible.filter((t) => {
       if (query && !`${t.nameHe} ${t.speciesLatin} ${t.categoryHe} ${t.storyHe} ${t.aiNotesHe}`.includes(query))
         return false;
-      if (maxH && t.heightM > maxH) return false;
+      // height is authoritative only for veterans (one specific specimen);
+      // stock varieties stay in the results — sizes vary per specimen
+      if (maxH && t.saleType === "unique" && t.heightM > maxH) return false;
       return true;
     });
     const list = (matches.length > 0 ? matches : visible).slice(0, 10).map((t) => ({
       name: t.nameHe,
       code: t.code,
-      latin: t.speciesLatin,
+      latin: t.saleType === "unique" ? t.speciesLatin || undefined : undefined,
       category: t.categoryHe,
       type: t.saleType === "unique" ? "דייר ותיק — עץ יחיד" : "עץ מלאי",
-      height_m: t.heightM || undefined,
-      trunk_cm: t.trunkDiameterCm || undefined,
-      age_years: t.ageYears || undefined,
+      // per-specimen specs go out only for veterans — a stock variety's DB
+      // values (if any linger) are not facts the AI may state
+      height_m: t.saleType === "unique" ? t.heightM || undefined : undefined,
+      trunk_cm: t.saleType === "unique" ? t.trunkDiameterCm || undefined : undefined,
+      age_years: t.saleType === "unique" ? t.ageYears || undefined : undefined,
       availability:
         t.saleType === "unique"
           ? "מוצג בקטלוג"
           : t.availability === "sold"
             ? "אזל מהמלאי"
             : "במלאי",
-      price:
-        settings.showPrices && t.priceMode !== "hidden"
-          ? t.saleType === "unique"
-            ? `₪${t.price.toLocaleString("he-IL")} (מחיר מדויק לעץ; הובלה ונטיעה בנפרד)`
-            : `החל מ־₪${t.price.toLocaleString("he-IL")}`
-          : "למחיר צרו קשר",
+      price: (() => {
+        if (!settings.showPrices || t.priceMode === "hidden") return "למחיר צרו קשר";
+        const promo = hasPromo(t);
+        const effective = promo ? t.promoPrice! : t.price;
+        const base =
+          t.saleType === "unique"
+            ? `₪${effective.toLocaleString("he-IL")} (מחיר מדויק)`
+            : `החל מ־₪${effective.toLocaleString("he-IL")}`;
+        return promo ? `${base} — במבצע! (במקום ₪${t.price.toLocaleString("he-IL")})` : base;
+      })(),
       story: t.storyHe,
       // the owner's care notes — the only allowed source for care answers
       care_notes: t.aiNotesHe || undefined,
@@ -181,6 +190,13 @@ async function runTool(
         hours: settings.hoursHe,
         phone: settings.phone,
         pro_phone: settings.proPhone,
+        address:
+          settings.addressHe ||
+          "כתובת לא הוגדרה — הפנה לטלפון לתיאום הגעה",
+        navigation:
+          settings.addressHe || settings.navCoords
+            ? "כפתורי ניווט Waze / Google Maps נמצאים בעמוד תיאום הביקור באתר"
+            : undefined,
         info:
           settings.aiInfoHe.trim() ||
           "אין מידע נוסף מהבעלים — הפנה את השאלה לטלפון, אל תמציא.",

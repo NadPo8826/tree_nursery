@@ -6,8 +6,8 @@ import { promises as fs } from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 import { repo } from "@/lib/db";
-import type { LeadStatus, Settings } from "@/lib/db";
-import { isValidAiChoice } from "@/lib/ai-models";
+import type { LeadStatus, Quote, Settings } from "@/lib/db";
+import { AI_MODELS, isValidAiChoice } from "@/lib/ai-models";
 import {
   DEFAULT_SECRETARY_SYSTEM,
   DEFAULT_TOOL_NURSERY_INFO,
@@ -91,6 +91,9 @@ export async function saveTreeAction(formData: FormData): Promise<void> {
     aiNotesHe: String(formData.get("aiNotesHe") ?? existing?.aiNotesHe ?? "")
       .trim()
       .slice(0, 1500),
+    // specs persist in the DB regardless of sale type (so flipping a tree
+    // unique↔stock never loses data); the site and the AI tool display
+    // them only for veterans — the gating lives at the presentation layer
     heightM: num(formData, "heightM", existing?.heightM ?? 0),
     trunkDiameterCm: num(
       formData,
@@ -106,6 +109,7 @@ export async function saveTreeAction(formData: FormData): Promise<void> {
         formData.get("requirementsHe") ?? existing?.requirementsHe ?? "",
       ).trim() || undefined,
     price: num(formData, "price", existing?.price ?? 0),
+    promoPrice: num(formData, "promoPrice", existing?.promoPrice ?? 0) || undefined,
     priceMode: (formData.get("priceMode") ??
       existing?.priceMode ??
       "from") as Tree["priceMode"],
@@ -351,10 +355,108 @@ export async function saveSettingsAction(formData: FormData): Promise<void> {
     whatsapp: String(formData.get("whatsapp") ?? current.whatsapp).trim(),
     email: String(formData.get("email") ?? current.email).trim(),
     hoursHe: String(formData.get("hoursHe") ?? current.hoursHe).trim(),
+    addressHe: String(formData.get("addressHe") ?? current.addressHe).trim().slice(0, 200),
+    navCoords: String(formData.get("navCoords") ?? current.navCoords)
+      .trim()
+      .slice(0, 50),
     showPrices: formData.get("showPrices") === "on",
+    showQuotes: formData.get("showQuotes") === "on",
+    showClients: formData.get("showClients") === "on",
   };
   await repo.saveSettings(settings);
   revalidatePath("/", "layout"); // prices affect every page
+}
+
+export async function addClientAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const nameHe = String(formData.get("nameHe") ?? "").trim().slice(0, 80);
+  const file = formData.get("logo");
+  let logoUrl = "";
+  if (file instanceof File && file.size > 0) {
+    logoUrl = (await saveUpload(file, "client")) ?? "";
+  }
+  if (!nameHe && !logoUrl) return; // a client needs a name, a logo, or both
+  const clients = await repo.getClients();
+  await repo.saveClients([
+    ...clients,
+    { id: randomUUID(), nameHe, logoUrl },
+  ]);
+  revalidatePath("/", "layout");
+}
+
+export async function deleteClientAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const clients = await repo.getClients();
+  await repo.saveClients(clients.filter((c) => c.id !== id));
+  revalidatePath("/", "layout");
+}
+
+export async function saveQuoteAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "") || randomUUID();
+  const textHe = String(formData.get("textHe") ?? "").trim().slice(0, 600);
+  const citeHe = String(formData.get("citeHe") ?? "").trim().slice(0, 120);
+  if (!textHe) return;
+  const quotes = await repo.getQuotes();
+  const next: Quote = {
+    id,
+    textHe,
+    citeHe,
+    published: formData.get("published") === "on",
+  };
+  const i = quotes.findIndex((q) => q.id === id);
+  if (i >= 0) quotes[i] = next;
+  else quotes.push(next);
+  await repo.saveQuotes(quotes);
+  revalidatePath("/", "layout");
+}
+
+export async function saveTelegramSettingsAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const current = await repo.getSettings();
+  const digestHour = num(formData, "digestHour", current.digestHour);
+  await repo.saveSettings({
+    ...current,
+    digestHour: digestHour >= 0 && digestHour <= 23 ? digestHour : -1,
+    nagAfterHours: Math.max(0, num(formData, "nagAfterHours", current.nagAfterHours)),
+    quoteTemplateHe: String(formData.get("quoteTemplateHe") ?? current.quoteTemplateHe)
+      .trim()
+      .slice(0, 4000),
+  });
+  revalidatePath("/admin/telegram");
+}
+
+export async function addTelegramAdminAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const id = String(formData.get("chatId") ?? "").trim();
+  if (!/^-?\d{5,15}$/.test(id)) return; // Telegram chat IDs are numeric
+  const current = await repo.getSettings();
+  const ids = new Set(
+    current.telegramAdminIds.split(",").map((s) => s.trim()).filter(Boolean),
+  );
+  ids.add(id);
+  await repo.saveSettings({ ...current, telegramAdminIds: [...ids].join(",") });
+  revalidatePath("/admin/telegram");
+}
+
+export async function removeTelegramAdminAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const id = String(formData.get("chatId") ?? "").trim();
+  const current = await repo.getSettings();
+  const ids = current.telegramAdminIds
+    .split(",")
+    .map((s) => s.trim())
+    .filter((existing) => existing && existing !== id);
+  await repo.saveSettings({ ...current, telegramAdminIds: ids.join(",") });
+  revalidatePath("/admin/telegram");
+}
+
+export async function deleteQuoteAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  await repo.saveQuotes((await repo.getQuotes()).filter((q) => q.id !== id));
+  revalidatePath("/", "layout");
 }
 
 function promptOverride(
@@ -393,6 +495,10 @@ export async function saveAiSettingsAction(formData: FormData): Promise<void> {
   if (isValidAiChoice(aiProvider, aiModel)) {
     settings.aiProvider = aiProvider;
     settings.aiModel = aiModel;
+  }
+  const secretaryModel = String(formData.get("aiSecretaryModel") ?? "");
+  if (AI_MODELS.anthropic.some((m) => m.id === secretaryModel)) {
+    settings.aiSecretaryModel = secretaryModel;
   }
   await repo.saveSettings(settings);
   revalidatePath("/admin/ai");

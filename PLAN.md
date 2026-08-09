@@ -242,10 +242,13 @@ The old site (domimtree.com) ranked via per-category links (עצי הדר, עצ�
 - [ ] **Domain** — buy (e.g. via Namecheap/Cloudflare), point DNS; also unlocks branded mail
 - [ ] **Hosting** — Hetzner CX22 (~€4.5/mo) is plenty: Node + `next start` behind Caddy (auto-HTTPS), or Coolify for push-to-deploy. File store + uploads on disk work as-is; no Supabase Storage needed on a server (only needed if we go serverless)
 - [ ] **Supabase switch (optional on Hetzner)** — file store is fine for one server; move to Supabase when we want managed backups/multi-instance. If switched: run schema.sql, set env vars, migrate db.json
-- [ ] **Resend domain verification** — add SPF/DKIM records for the new domain, send as quotes@domain, `reply_to` the owner's Gmail (Resend cannot send *through* Gmail — verified domain is the right way)
-- [ ] **Real contact details** in /admin settings: phone, pro line, WhatsApp number, email
-- [ ] **Telegram production webhook** — `setWebhook` to https://domain/api/telegram with secret token; retire the local poll script; set TELEGRAM_ADMIN_CHAT_IDS
-- [ ] **Cron** — systemd timer (or Vercel Cron if serverless) hitting /api/cron/reminders every minute with CRON_SECRET; add morning-digest cron
+- [ ] **Email go-live (one DNS session, ~15 min)** —
+  - Verify the domain in Resend (SPF/DKIM records) — until then sends are sandbox-only (onboarding@resend.dev → owner's own address only)
+  - Uncomment `LEAD_EMAIL_FROM=quotes@<domain>` in the server env (mailbox need not exist; display name "עץ הדומים" is added automatically from settings)
+  - Create a free forwarding alias `info@<domain>` → owner's Gmail (Cloudflare Email Routing / registrar forwarding) and put **that** in /admin settings אימייל לפניות — so the Gmail is never exposed on the site or as reply-to (JSON-LD already omits email entirely as anti-harvesting)
+  - `reply_to` is already wired: customer replies land in the owner's real inbox; replying to a lead-alert email opens a mail to the customer
+- [ ] **Real contact details** in /admin settings: phone (old site showed 052-509-29-08), pro line, WhatsApp number, email (the forwarding alias above), address + precise nav coordinates (Waze/Google Maps buttons appear once set)
+- [ ] **Telegram production switch** — register the real webhook (`setWebhook` with TELEGRAM_WEBHOOK_SECRET), retire scripts/telegram-poll.mjs, point the minute-cron at /api/cron/reminders with CRON_SECRET (drives reminders + morning digest + stuck-lead nags); admin IDs/digest hour/nag threshold/quote template all live in /admin/telegram
 - [ ] **Secrets** — regenerate ADMIN_PASSWORD, set ADMIN_SESSION_SECRET, ADMIN_TOTP_SECRET (MFA), CRON_SECRET, TELEGRAM_WEBHOOK_SECRET; Anthropic spend cap in console
 - [ ] **Media** — replace demo (Wikimedia) media with the real shoot (see §5 shoot list); keep attribution file until then
 - [ ] **Analytics** — self-hosted Plausible/Umami; wire secretary visitor-stats tool to it

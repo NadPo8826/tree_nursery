@@ -13,7 +13,7 @@ const links = [
   { href: "/guides", label: "מדריכים" },
 ] as const;
 
-export function SiteNav() {
+export function SiteNav({ hasSales = false }: { hasSales?: boolean }) {
   const pathname = usePathname();
   const overHero = pathname === "/"; // homepage: nav floats over the dark hero
   const [scrolled, setScrolled] = useState(false);
@@ -91,6 +91,18 @@ export function SiteNav() {
             {l.label}
           </Link>
         ))}
+        {hasSales && (
+          <Link
+            href="/sales"
+            className={`whitespace-nowrap border-b-2 pb-1 pt-1.5 font-semibold text-gold-bright transition-colors hover:text-gold-bright ${
+              pathname.startsWith("/sales")
+                ? "border-gold-bright"
+                : "border-transparent"
+            }`}
+          >
+            מבצעים
+          </Link>
+        )}
         <Link
           href="/pro"
           className="whitespace-nowrap rounded-full border border-dashed border-line-warm/60 px-3 py-1 text-xs text-line-warm hover:border-gold-bright hover:text-gold-bright"
@@ -144,6 +156,18 @@ export function SiteNav() {
                   {l.label}
                 </Link>
               ))}
+              {hasSales && (
+                <Link
+                  href="/sales"
+                  className={`rounded-xl px-4 py-3 text-base font-semibold text-gold-bright ${
+                    pathname.startsWith("/sales")
+                      ? "bg-white/10"
+                      : "hover:bg-white/5"
+                  }`}
+                >
+                  מבצעים
+                </Link>
+              )}
               <Link
                 href="/pro"
                 className={`mt-2 rounded-xl border border-dashed border-line-warm/50 px-4 py-3 text-sm ${

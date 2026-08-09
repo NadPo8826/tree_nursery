@@ -62,12 +62,43 @@ export default async function AdminSettingsPage() {
           שעות פתיחה
           <input name="hoursHe" defaultValue={s.hoursHe} className="admin-input" />
         </label>
+        <label className="block text-xs text-ink-muted">
+          כתובת המשתלה
+          <input name="addressHe" defaultValue={s.addressHe} className="admin-input" />
+          <span className="mt-1 block text-[11px] leading-relaxed">
+            מוצגת באתר ומשמשת לכפתורי הניווט (Waze / Google Maps) בעמוד
+            תיאום הביקור ובפוטר. ריק — כפתורי הניווט לא מוצגים.
+          </span>
+        </label>
+        <label className="block text-xs text-ink-muted">
+          נקודת ציון מדויקת (רשות)
+          <input
+            name="navCoords"
+            defaultValue={s.navCoords}
+            dir="ltr"
+            placeholder="32.6543, 35.2901"
+            className="admin-input"
+          />
+          <span className="mt-1 block text-[11px] leading-relaxed">
+            לדרכים כפריות שכתובת לא מוצאת: בגוגל מפות — קליק ימני על שער
+            המשתלה ← העתקת הקואורדינטות, והדביקו כאן. כשמוגדר, הניווט מכוון
+            בדיוק לנקודה הזו.
+          </span>
+        </label>
         <label className="flex items-center gap-2.5 self-end rounded-xl border-[1.5px] border-line-warm bg-card px-4 py-3 text-sm sm:col-span-2">
           <input type="checkbox" name="showPrices" defaultChecked={s.showPrices} />
           הצגת מחירים באתר
           <span className="text-xs text-ink-muted">
             (בכיבוי — כל המחירים מוסתרים, בכל העמודים)
           </span>
+        </label>
+        <label className="flex items-center gap-2.5 rounded-xl border-[1.5px] border-line-warm bg-card px-4 py-3 text-sm">
+          <input type="checkbox" name="showQuotes" defaultChecked={s.showQuotes} />
+          מקטע "מה אומרים עלינו"
+        </label>
+        <label className="flex items-center gap-2.5 rounded-xl border-[1.5px] border-line-warm bg-card px-4 py-3 text-sm">
+          <input type="checkbox" name="showClients" defaultChecked={s.showClients} />
+          מקטע "בין לקוחותינו"
         </label>
         <div className="sm:col-span-2">
           <SaveButton className="min-h-11 rounded-full bg-clay px-6 py-2 text-sm font-semibold text-white">

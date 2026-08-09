@@ -2,13 +2,15 @@ import Link from "next/link";
 import { site } from "@/lib/site";
 import { repo } from "@/lib/db";
 import { siteContent } from "@/data/content";
-import { quotes } from "@/data/quotes";
 import { HorizonCurve } from "@/components/HorizonCurve";
 import { TreeCard } from "@/components/TreeCard";
 import { Reveal } from "@/components/Reveal";
 import { HeroGallery } from "@/components/HeroGallery";
 import { IsraelMap } from "@/components/IsraelMap";
 import { QuoteCarousel } from "@/components/QuoteCarousel";
+import { hasPromo, isOnSale } from "@/lib/catalog";
+import type { Tree } from "@/lib/types";
+import type { ClientEntry } from "@/lib/db";
 
 function SectionHead({ title, sub }: { title: string; sub?: string }) {
   return (
@@ -63,6 +65,132 @@ const seasonNames: Record<string, string> = {
   autumn: "סתיו",
 };
 
+/** One row of the clients marquee: content duplicated for a seamless loop. */
+function ClientsRow({
+  clients,
+  reverse = false,
+}: {
+  clients: ClientEntry[];
+  reverse?: boolean;
+}) {
+  // big, airy logo-wall items — no card chrome, generous spacing
+  let chipIndex = 0;
+  const chip = (client: ClientEntry, ariaHidden: boolean) => (
+    <span
+      key={`${client.id}-${chipIndex++}`}
+      aria-hidden={ariaHidden || undefined}
+      className="flex shrink-0 items-center gap-5"
+    >
+      {client.logoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={client.logoUrl}
+          alt={ariaHidden ? "" : client.nameHe}
+          className="h-20 w-auto max-w-48 rounded-xl object-contain md:h-24"
+        />
+      )}
+      {client.nameHe && (
+        <span className="whitespace-nowrap font-display text-2xl text-ink-soft md:text-3xl">
+          {client.nameHe}
+        </span>
+      )}
+      <span aria-hidden className="ms-9 size-1.5 rounded-full bg-gold/60" />
+    </span>
+  );
+
+  return (
+    <div className="marquee overflow-hidden py-2">
+      <div
+        className={`marquee-track flex w-max items-center gap-14 pe-14 ${reverse ? "marquee-reverse" : ""}`}
+        style={{ animationDuration: `${Math.max(20, clients.length * 9)}s` }}
+      >
+        {/* six copies keep the track wider than any viewport even with few,
+            short client names — the keyframe shifts by exactly one copy (1/6),
+            so the loop never exposes an empty edge */}
+        {Array.from({ length: 6 }, (_, copy) =>
+          clients.map((c) => chip(c, copy > 0)),
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Full-width feature card for a lone veteran — a spotlight, not a grid cell. */
+function VeteranSpotlight({
+  tree,
+  showPrices,
+}: {
+  tree: Tree;
+  showPrices: boolean;
+}) {
+  const specs = [
+    tree.ageYears > 0 && `גיל ~${tree.ageYears}`,
+    tree.heightM > 0 && `גובה ${tree.heightM} מ׳`,
+    tree.trunkDiameterCm > 0 && `גזע Ø${tree.trunkDiameterCm} ס״מ`,
+  ].filter(Boolean);
+  const promo = hasPromo(tree);
+
+  return (
+    <Reveal>
+      <Link
+        href={`/tree/${tree.slug}`}
+        className="group grid overflow-hidden rounded-[24px_24px_24px_84px] border-[1.5px] border-line-sand bg-card transition-all hover:-translate-y-1 hover:border-clay hover:shadow-xl hover:shadow-clay/10 md:grid-cols-2"
+      >
+        <div
+          className="min-h-72 bg-cover bg-center md:min-h-[420px]"
+          style={{
+            backgroundImage: tree.photos[0]
+              ? `url(${tree.photos[0]})`
+              : "linear-gradient(170deg,#9aa884,#55614a 70%,#3e4836)",
+          }}
+        />
+        <div className="flex flex-col p-7 md:p-10">
+          <span className="self-start rounded-full bg-soil px-3 py-1 text-xs text-gold-bright">
+            ✦ דייר ותיק — קיים אחד כזה
+          </span>
+          <h3 className="mt-4 font-display text-3xl md:text-4xl">{tree.nameHe}</h3>
+          {tree.speciesLatin && (
+            <p className="mt-1 text-sm italic text-ink-muted" dir="ltr">
+              {tree.speciesLatin}
+            </p>
+          )}
+          {tree.storyHe && (
+            <p className="mt-4 text-sm leading-relaxed text-ink-soft">
+              {tree.storyHe}
+            </p>
+          )}
+          {specs.length > 0 && (
+            <p className="mt-4 text-xs text-ink-muted">{specs.join(" · ")}</p>
+          )}
+          <div className="mt-auto flex items-center justify-between gap-4 pt-6">
+            {showPrices && tree.priceMode !== "hidden" ? (
+              <p className="font-display text-2xl font-semibold text-clay-deep tabular-nums">
+                {promo && (
+                  <span className="me-2 font-body text-base font-normal text-ink-muted line-through">
+                    ₪{tree.price.toLocaleString("he-IL")}
+                  </span>
+                )}
+                ₪{(promo ? tree.promoPrice! : tree.price).toLocaleString("he-IL")}
+              </p>
+            ) : (
+              <p className="text-sm text-ink-muted">למחיר — צרו איתנו קשר</p>
+            )}
+            <span className="flex items-center gap-2 text-sm font-semibold text-clay-deep">
+              להכיר את העץ
+              <span
+                aria-hidden
+                className="grid size-9 place-items-center rounded-full bg-clay text-white transition-transform group-hover:-translate-x-0.5"
+              >
+                ←
+              </span>
+            </span>
+          </div>
+        </div>
+      </Link>
+    </Reveal>
+  );
+}
+
 const processSteps = [
   "שנתיים של הכנת גוש שורשים, בהדרגה",
   "חגירת הגוש, הרמה במנוף והובלה זהירה",
@@ -73,13 +201,16 @@ const processSteps = [
 export const revalidate = 60;
 
 export default async function Home() {
-  const [trees, projects, settings, guides, media] = await Promise.all([
-    repo.getTrees(),
-    repo.getProjects(),
-    repo.getSettings(),
-    repo.getGuides(),
-    repo.getMedia(),
-  ]);
+  const [trees, projects, settings, guides, media, clients, quotes] =
+    await Promise.all([
+      repo.getTrees(),
+      repo.getProjects(),
+      repo.getSettings(),
+      repo.getGuides(),
+      repo.getMedia(),
+      repo.getClients(),
+      repo.getQuotes(),
+    ]);
   const content = siteContent;
   // דיירים ותיקים = the unique one-by-one trees; `featured` picks which
   // of them lead when there are more than three. When none exist the
@@ -97,7 +228,11 @@ export default async function Home() {
     ...featuredPool.filter((t) => !t.featured),
   ].slice(0, 3);
   const guideTeasers = guides.filter((g) => g.published).slice(0, 3);
-  const publishedQuotes = quotes;
+  const onSaleTrees = trees.filter(isOnSale);
+  const publishedQuotes = quotes.filter((q) => q.published);
+  const socialProofVisible =
+    (settings.showQuotes && publishedQuotes.length > 0) ||
+    (settings.showClients && clients.length > 0);
   const [heroTitleA, heroTitleB] = content.hero_title.split("\n");
 
   return (
@@ -254,13 +389,59 @@ export default async function Home() {
                 : "מבחר מתוך העצים הבוגרים שגדלים אצלנו בין השורות."
             }
           />
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {featured.map((tree, i) => (
-              <Reveal key={tree.slug} delay={i * 110}>
-                <TreeCard tree={tree} index={i} showPrices={settings.showPrices} />
-              </Reveal>
-            ))}
-          </div>
+          {/* one veteran deserves a spotlight, not a lonely grid cell;
+              two sit as a centered pair; three or more fill the grid */}
+          {hasVeterans && featured.length === 1 ? (
+            <VeteranSpotlight tree={featured[0]} showPrices={settings.showPrices} />
+          ) : (
+            <div
+              className={`grid gap-8 ${
+                featured.length === 2
+                  ? "mx-auto max-w-4xl sm:grid-cols-2"
+                  : "sm:grid-cols-2 lg:grid-cols-3"
+              }`}
+            >
+              {featured.map((tree, i) => (
+                <Reveal key={tree.slug} delay={i * 110}>
+                  <TreeCard tree={tree} index={i} showPrices={settings.showPrices} />
+                </Reveal>
+              ))}
+            </div>
+          )}
+
+          {/* SALES — its own gold-framed shelf, only while promos run */}
+          {onSaleTrees.length > 0 && (
+            <Reveal className="mt-14">
+              <div className="rounded-[24px_24px_24px_84px] border-[1.5px] border-gold/70 bg-gradient-to-l from-gold-bright/12 via-transparent to-transparent p-6 sm:p-8">
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                  <span className="rounded-full bg-gold-bright px-3 py-1 text-xs font-bold text-soil">
+                    מבצע
+                  </span>
+                  <h2 className="font-display text-2xl">מבצעי מכירה</h2>
+                  <p className="text-sm text-ink-muted">
+                    המלאי מתחלף — מי שמקדים זוכה.
+                  </p>
+                  <Link
+                    href="/sales"
+                    className="ms-auto text-sm font-semibold text-clay-deep hover:underline"
+                  >
+                    לכל המבצעים ←
+                  </Link>
+                </div>
+                <div className="mt-6 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+                  {onSaleTrees.slice(0, 3).map((tree, i) => (
+                    <TreeCard
+                      key={tree.slug}
+                      tree={tree}
+                      index={i}
+                      showPrices={settings.showPrices}
+                    />
+                  ))}
+                </div>
+              </div>
+            </Reveal>
+          )}
+
           <Gateway
             href="/catalog"
             title="כל העצים שלנו מחכים בקטלוג"
@@ -369,20 +550,43 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* CLIENT VOICES */}
-      {publishedQuotes.length > 0 && (
-        <section className="pt-10">
-          <SectionHead title="מה אומרים עלינו" />
-          <QuoteCarousel quotes={publishedQuotes} />
+      {/* SAND FINALE — social proof (client voices + clients strip) and the
+          closing invitation share one distinct band */}
+      {socialProofVisible && <HorizonCurve fill="var(--color-sand)" />}
+      {socialProofVisible && (
+        <section className="bg-sand pb-4 pt-12">
+          {settings.showQuotes && publishedQuotes.length > 0 && (
+            <>
+              <SectionHead title="מה אומרים עלינו" />
+              <QuoteCarousel quotes={publishedQuotes} />
+            </>
+          )}
+          {settings.showClients && clients.length > 0 && (
+            <div className={settings.showQuotes && publishedQuotes.length > 0 ? "mt-14" : ""}>
+              <SectionHead title="בין לקוחותינו" />
+              <div className="space-y-6">
+                {clients.length >= 6 ? (
+                  <>
+                    <ClientsRow clients={clients.filter((_, i) => i % 2 === 0)} />
+                    <ClientsRow clients={clients.filter((_, i) => i % 2 === 1)} reverse />
+                  </>
+                ) : (
+                  <ClientsRow clients={clients} />
+                )}
+              </div>
+            </div>
+          )}
         </section>
       )}
-
-      {/* CLOSING */}
-      <HorizonCurve fill="var(--color-sand)" />
-      <section className="bg-sand px-6 pb-16 pt-10 text-center">
-        <Reveal>
+      {/* CLOSING — its own dark chapter, the visit invitation as finale */}
+      <section className="grainy bg-soil text-ink-cream">
+        <HorizonCurve
+          flip
+          fill={socialProofVisible ? "var(--color-sand)" : "var(--color-cream)"}
+        />
+        <Reveal className="px-6 pb-16 pt-10 text-center">
           <h2 className="font-display text-3xl">{content.close_title}</h2>
-          <p className="mx-auto mt-3 max-w-md text-sm text-ink-muted">
+          <p className="mx-auto mt-3 max-w-md text-sm text-ink-cream-soft">
             {content.close_sub}
           </p>
           <div className="mt-7 flex items-center justify-center gap-8 text-sm">
@@ -394,7 +598,7 @@ export default async function Home() {
             </Link>
             <a
               href={`tel:${settings.phone}`}
-              className="border-b border-gold pb-0.5"
+              className="border-b border-gold-bright pb-0.5 text-gold-bright"
             >
               {settings.phone}
             </a>

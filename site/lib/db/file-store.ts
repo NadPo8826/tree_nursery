@@ -11,6 +11,7 @@ import type {
 } from "./store";
 import { defaultMedia, emptyAiPrompts } from "./store";
 import { trees as seedTrees } from "@/data/trees";
+import { quotes as seedQuotes } from "@/data/quotes";
 import { guides as seedGuides } from "@/data/guides";
 import { projects as seedProjects } from "@/data/projects";
 import { site } from "@/lib/site";
@@ -30,11 +31,14 @@ const defaultSettings: Settings = {
   whatsapp: "9725200000000", // international format, no plus
   email: "info@example.co.il",
   hoursHe: "א׳–ה׳ 8:00–16:00 · ו׳ 8:00–12:00 · בתיאום מראש",
+  addressHe: "",
+  navCoords: "",
   dunams: 120,
   speciesCount: 38,
   showPrices: true,
   aiProvider: "anthropic",
   aiModel: "claude-sonnet-5",
+  aiSecretaryModel: "claude-opus-5",
   aiDailyLimit: 400,
   aiIpDailyLimit: 60,
   aiIpMinuteLimit: 8,
@@ -42,7 +46,15 @@ const defaultSettings: Settings = {
   // Until filled in /admin/ai, the AI refers such questions to the phone.
   aiInfoHe: "",
   aiPrompts: { ...emptyAiPrompts },
+  showQuotes: true,
+  showClients: true,
+  telegramAdminIds: "",
+  digestHour: 8,
+  nagAfterHours: 48,
+  quoteTemplateHe: "",
 };
+
+const emptyTelegramState = { lastDigestDate: "", naggedLeadIds: [] };
 
 async function load(): Promise<DbShape> {
   try {
@@ -61,6 +73,15 @@ async function load(): Promise<DbShape> {
     };
     db.reminders ??= [];
     db.aiFeedback ??= {};
+    db.clients ??= [];
+    db.quotes ??= seedQuotes.map((q, i) => ({
+      id: `q${i + 1}`,
+      textHe: q.textHe,
+      citeHe: q.citeHe,
+      published: true,
+    }));
+    db.telegramState ??= { ...emptyTelegramState };
+    db.telegramLog ??= [];
     return db;
   } catch {
     const fresh: DbShape = {
@@ -72,6 +93,15 @@ async function load(): Promise<DbShape> {
       media: { ...defaultMedia },
       reminders: [],
       aiFeedback: {},
+      clients: [],
+      quotes: seedQuotes.map((q, i) => ({
+        id: `q${i + 1}`,
+        textHe: q.textHe,
+        citeHe: q.citeHe,
+        published: true,
+      })),
+      telegramState: { ...emptyTelegramState },
+      telegramLog: [],
     };
     await save(fresh);
     return fresh;
@@ -120,6 +150,14 @@ export const fileRepo: Repo = {
       await save(db);
     }
   },
+  async appendLeadQuote(id, quote) {
+    const db = await load();
+    const lead = db.leads.find((l) => l.id === id);
+    if (lead) {
+      lead.quotesSent = [...(lead.quotesSent ?? []), quote];
+      await save(db);
+    }
+  },
   async deleteLead(id: string) {
     const db = await load();
     db.leads = db.leads.filter((l) => l.id !== id);
@@ -127,6 +165,38 @@ export const fileRepo: Repo = {
   },
   async getAiFeedback() {
     return (await load()).aiFeedback;
+  },
+  async getClients() {
+    return (await load()).clients;
+  },
+  async saveClients(clients) {
+    const db = await load();
+    db.clients = clients;
+    await save(db);
+  },
+  async getQuotes() {
+    return (await load()).quotes;
+  },
+  async saveQuotes(quotes) {
+    const db = await load();
+    db.quotes = quotes;
+    await save(db);
+  },
+  async getTelegramState() {
+    return (await load()).telegramState;
+  },
+  async saveTelegramState(state) {
+    const db = await load();
+    db.telegramState = state;
+    await save(db);
+  },
+  async getTelegramLog() {
+    return (await load()).telegramLog;
+  },
+  async appendTelegramLog(entry) {
+    const db = await load();
+    db.telegramLog = [...db.telegramLog, entry].slice(-300);
+    await save(db);
   },
   async addAiFeedbackVote(key: string, vote: "up" | "down") {
     const db = await load();

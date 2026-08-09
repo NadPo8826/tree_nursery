@@ -2,12 +2,24 @@
 
 /** Lead captured from any channel (form / RFQ / AI chat). */
 export type LeadStatus = "new" | "contacted" | "visited" | "planted";
-export type LeadChannel = "form" | "rfq" | "ai_chat" | "whatsapp_click";
+export type LeadChannel =
+  | "form"
+  | "rfq"
+  | "ai_chat"
+  | "whatsapp_click"
+  | "manual"; // created by the owner via the Telegram secretary (phone contact etc.)
 
 export interface LeadItem {
   treeSlug: string;
   treeName: string;
   qtyRange: string;
+}
+
+/** A quote the secretary sent for this lead — shown on the admin lead card. */
+export interface SentQuote {
+  at: string; // ISO
+  body: string;
+  via: "email" | "telegram"; // telegram = delivered to the owner to forward
 }
 
 export interface Lead {
@@ -23,6 +35,7 @@ export interface Lead {
   sourcePage: string;
   isPro: boolean;
   status: LeadStatus;
+  quotesSent?: SentQuote[];
 }
 
 /** A reminder the owner sets via the Telegram secretary. */
@@ -44,6 +57,10 @@ export interface Settings {
   whatsapp: string;
   email: string;
   hoursHe: string;
+  /** Display address; also the navigation query when no coords are set. */
+  addressHe: string;
+  /** Optional "lat,lng" — precise pin for Waze/Google Maps (rural roads!). */
+  navCoords: string;
   dunams: number;
   speciesCount: number;
   /** Global switch: when false, no prices appear anywhere on the site. */
@@ -51,6 +68,8 @@ export interface Settings {
   /** AI engine behind the visitor chat — picked in /admin/ai. */
   aiProvider: "anthropic" | "gemini";
   aiModel: string;
+  /** The Telegram secretary's model (Claude only — it emails in the owner's name). */
+  aiSecretaryModel: string;
   /** Chat abuse/spend caps, editable in /admin/ai. */
   aiDailyLimit: number; // total messages/day, all visitors
   aiIpDailyLimit: number; // messages/day per visitor (IP)
@@ -67,6 +86,46 @@ export interface Settings {
    * guardrail text — the admin UI warns before editing).
    */
   aiPrompts: AiPromptOverrides;
+  /** Homepage section visibility switches. */
+  showQuotes: boolean; // "מה אומרים עלינו"
+  showClients: boolean; // "בין לקוחותינו"
+  /**
+   * Telegram secretary config (/admin/telegram). Admin chat IDs here are
+   * combined with the env-var list (env = tamper-proof bootstrap).
+   */
+  telegramAdminIds: string; // comma-separated chat IDs
+  digestHour: number; // Israel-time hour for the morning digest; -1 = off
+  nagAfterHours: number; // nag when a lead stays "new" this long; 0 = off
+  quoteTemplateHe: string; // owner's quote-email template for the secretary
+}
+
+/** Cron bookkeeping so the digest fires once a day and nags fire once a lead. */
+export interface TelegramState {
+  lastDigestDate: string; // YYYY-MM-DD Israel time
+  naggedLeadIds: string[];
+}
+
+/** One line in the secretary's activity log (/admin/telegram). */
+export interface TelegramLogEntry {
+  at: string; // ISO
+  kind: "in" | "out" | "cron";
+  chatId?: string;
+  text: string;
+}
+
+/** A client shown in the homepage strip — logo, text, or both. */
+export interface ClientEntry {
+  id: string;
+  nameHe: string;
+  logoUrl: string;
+}
+
+/** Client testimonial ("מה אומרים עלינו") — managed in /admin/quotes. */
+export interface Quote {
+  id: string;
+  textHe: string;
+  citeHe: string;
+  published: boolean;
 }
 
 export interface AiPromptOverrides {
@@ -122,6 +181,10 @@ export interface DbShape {
   media: SiteMedia;
   reminders: Reminder[];
   aiFeedback: AiFeedback;
+  clients: ClientEntry[];
+  quotes: Quote[];
+  telegramState: TelegramState;
+  telegramLog: TelegramLogEntry[];
 }
 
 /**
@@ -137,6 +200,7 @@ export interface Repo {
   getLeads(): Promise<Lead[]>;
   addLead(lead: Lead): Promise<void>;
   setLeadStatus(id: string, status: LeadStatus): Promise<void>;
+  appendLeadQuote(id: string, quote: SentQuote): Promise<void>;
   deleteLead(id: string): Promise<void>;
 
   getSettings(): Promise<Settings>;
@@ -158,4 +222,16 @@ export interface Repo {
 
   getAiFeedback(): Promise<AiFeedback>;
   addAiFeedbackVote(key: string, vote: "up" | "down"): Promise<void>;
+
+  getClients(): Promise<ClientEntry[]>;
+  saveClients(clients: ClientEntry[]): Promise<void>;
+
+  getQuotes(): Promise<Quote[]>;
+  saveQuotes(quotes: Quote[]): Promise<void>;
+
+  getTelegramState(): Promise<TelegramState>;
+  saveTelegramState(state: TelegramState): Promise<void>;
+
+  getTelegramLog(): Promise<TelegramLogEntry[]>;
+  appendTelegramLog(entry: TelegramLogEntry): Promise<void>;
 }

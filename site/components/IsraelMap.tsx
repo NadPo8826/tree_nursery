@@ -97,9 +97,13 @@ export function IsraelMap({ projects }: { projects: Project[] }) {
                 }`}
               />
               <text
-                x={labelStart ? p.mapX - 9 : p.mapX + 9}
+                x={labelStart ? p.mapX - 10 : p.mapX + 10}
                 y={p.mapY + 3}
                 textAnchor={labelStart ? "end" : "start"}
+                // the page is dir="rtl", which flips SVG text-anchor semantics
+                // and makes labels extend across their pin — anchor in LTR
+                // terms (Hebrew glyph order is unaffected)
+                style={{ direction: "ltr" }}
                 className={`text-[10px] ${
                   i === active ? "fill-ink font-semibold" : "fill-ink-muted"
                 }`}

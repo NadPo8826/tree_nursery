@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { Repo } from "./store";
 import { fileRepo } from "./file-store";
 
@@ -16,12 +17,33 @@ if (useSupabase) {
   repoImpl = (require("./supabase-store") as { supabaseRepo: Repo }).supabaseRepo;
 }
 
-export const repo: Repo = repoImpl;
+/**
+ * Read methods are wrapped in React cache() so one request renders with one
+ * backend round trip per getter (layout + footer + page all call
+ * getSettings/getTrees). Mutations stay uncached; each server action runs in
+ * its own request, so it never sees a stale in-request memo of its own write.
+ */
+export const repo: Repo = {
+  ...repoImpl,
+  getTrees: cache(repoImpl.getTrees.bind(repoImpl)),
+  getTree: cache(repoImpl.getTree.bind(repoImpl)),
+  getLeads: cache(repoImpl.getLeads.bind(repoImpl)),
+  getSettings: cache(repoImpl.getSettings.bind(repoImpl)),
+  getGuides: cache(repoImpl.getGuides.bind(repoImpl)),
+  getProjects: cache(repoImpl.getProjects.bind(repoImpl)),
+  getMedia: cache(repoImpl.getMedia.bind(repoImpl)),
+  getReminders: cache(repoImpl.getReminders.bind(repoImpl)),
+  getAiFeedback: cache(repoImpl.getAiFeedback.bind(repoImpl)),
+  getClients: cache(repoImpl.getClients.bind(repoImpl)),
+  getQuotes: cache(repoImpl.getQuotes.bind(repoImpl)),
+};
 export type {
   AiFeedback,
+  ClientEntry,
   Lead,
   LeadItem,
   LeadStatus,
+  Quote,
   Reminder,
   Settings,
 } from "./store";

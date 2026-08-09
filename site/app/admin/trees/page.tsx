@@ -102,6 +102,15 @@ export default async function AdminTreesPage() {
                   <option value="hidden">מוסתר — "למחיר צרו קשר"</option>
                 </select>
               </label>
+              <label className="block text-xs text-ink-muted">
+                מחיר מבצע (רשות — מציג את העץ בעמוד המבצעים)
+                <input
+                  name="promoPrice"
+                  type="number"
+                  defaultValue={tree.promoPrice || ""}
+                  className="admin-input"
+                />
+              </label>
               {tree.saleType === "unique" ? (
                 <label className="flex items-center gap-2 self-end pb-2 text-xs text-ink-muted">
                   <input

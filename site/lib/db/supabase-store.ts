@@ -2,11 +2,16 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Guide, Project, Tree } from "@/lib/types";
 import type {
   AiFeedback,
+  ClientEntry,
   Lead,
   LeadStatus,
+  Quote,
   Repo,
+  SentQuote,
   Settings,
   SiteMedia,
+  TelegramLogEntry,
+  TelegramState,
 } from "./store";
 import { defaultMedia, emptyAiPrompts } from "./store";
 
@@ -46,6 +51,7 @@ function rowToTree(r: Record<string, unknown>): Tree {
       : undefined,
     requirementsHe: (r.requirements_he as string) ?? undefined,
     price: Number(r.price),
+    promoPrice: r.promo_price ? Number(r.promo_price) : undefined,
     priceMode: r.price_mode as Tree["priceMode"],
     availability: r.availability as Tree["availability"],
     saleType: (r.sale_type ?? "stock") as Tree["saleType"],
@@ -69,6 +75,7 @@ function treeToRow(t: Tree) {
     root_ball_weight_kg: t.rootBallWeightKg ?? null,
     requirements_he: t.requirementsHe ?? null,
     price: t.price,
+    promo_price: t.promoPrice ?? null,
     price_mode: t.priceMode,
     availability: t.availability,
     sale_type: t.saleType,
@@ -119,6 +126,7 @@ export const supabaseRepo: Repo = {
       interest: r.interest ?? "",
       items: r.items ?? [],
       channel: r.channel,
+      quotesSent: (r.quotes_sent as SentQuote[]) ?? undefined,
       sourcePage: r.source_page ?? "",
       isPro: r.is_pro ?? false,
       status: r.status,
@@ -145,6 +153,21 @@ export const supabaseRepo: Repo = {
     const { error } = await db().from("leads").update({ status }).eq("id", id);
     if (error) throw error;
   },
+  async appendLeadQuote(id, quote) {
+    const { data, error } = await db()
+      .from("leads")
+      .select("quotes_sent")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return;
+    const quotes = [...((data.quotes_sent as SentQuote[]) ?? []), quote];
+    const { error: updateError } = await db()
+      .from("leads")
+      .update({ quotes_sent: quotes })
+      .eq("id", id);
+    if (updateError) throw updateError;
+  },
   async deleteLead(id) {
     const { error } = await db().from("leads").delete().eq("id", id);
     if (error) throw error;
@@ -157,6 +180,69 @@ export const supabaseRepo: Repo = {
       .maybeSingle();
     if (error) throw error;
     return (data?.value ?? {}) as AiFeedback;
+  },
+  async getClients() {
+    const { data, error } = await db()
+      .from("documents")
+      .select("value")
+      .eq("key", "clients")
+      .maybeSingle();
+    if (error) throw error;
+    return (data?.value ?? []) as ClientEntry[];
+  },
+  async saveClients(clients) {
+    const { error } = await db()
+      .from("documents")
+      .upsert({ key: "clients", value: clients });
+    if (error) throw error;
+  },
+  async getQuotes() {
+    const { data, error } = await db()
+      .from("documents")
+      .select("value")
+      .eq("key", "quotes")
+      .maybeSingle();
+    if (error) throw error;
+    return (data?.value ?? []) as Quote[];
+  },
+  async saveQuotes(quotes) {
+    const { error } = await db()
+      .from("documents")
+      .upsert({ key: "quotes", value: quotes });
+    if (error) throw error;
+  },
+  async getTelegramState() {
+    const { data, error } = await db()
+      .from("documents")
+      .select("value")
+      .eq("key", "telegram_state")
+      .maybeSingle();
+    if (error) throw error;
+    return (
+      (data?.value as TelegramState) ?? { lastDigestDate: "", naggedLeadIds: [] }
+    );
+  },
+  async saveTelegramState(state) {
+    const { error } = await db()
+      .from("documents")
+      .upsert({ key: "telegram_state", value: state });
+    if (error) throw error;
+  },
+  async getTelegramLog() {
+    const { data, error } = await db()
+      .from("documents")
+      .select("value")
+      .eq("key", "telegram_log")
+      .maybeSingle();
+    if (error) throw error;
+    return (data?.value ?? []) as TelegramLogEntry[];
+  },
+  async appendTelegramLog(entry) {
+    const current = await supabaseRepo.getTelegramLog();
+    const { error } = await db()
+      .from("documents")
+      .upsert({ key: "telegram_log", value: [...current, entry].slice(-300) });
+    if (error) throw error;
   },
   async addAiFeedbackVote(key, vote) {
     const current = await supabaseRepo.getAiFeedback();

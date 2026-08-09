@@ -17,6 +17,7 @@ const channelLabels: Record<string, string> = {
   rfq: "בחירת עצים",
   ai_chat: "צ'אט",
   whatsapp_click: "וואטסאפ",
+  manual: "ידני / טלפון",
 };
 
 type Tab = "all" | "quote" | "visit" | "pro" | "other";
@@ -135,6 +136,33 @@ export default async function AdminLeadsPage({
             )}
             {lead.message && (
               <p className="mt-2 text-sm text-ink-soft">{lead.message}</p>
+            )}
+            {(lead.quotesSent?.length ?? 0) > 0 && (
+              <details className="mt-3 rounded-xl border border-line-sand bg-cream/60">
+                <summary className="cursor-pointer px-4 py-2.5 text-sm font-semibold text-clay-deep">
+                  ✉ הצעות מחיר שנשלחו ({lead.quotesSent!.length})
+                </summary>
+                <div className="space-y-3 border-t border-line-sand px-4 py-3">
+                  {lead.quotesSent!.map((q, i) => (
+                    <div key={i}>
+                      <p className="text-xs text-ink-muted">
+                        {new Date(q.at).toLocaleString("he-IL", {
+                          timeZone: "Asia/Jerusalem",
+                          dateStyle: "short",
+                          timeStyle: "short",
+                        })}
+                        {" · "}
+                        {q.via === "email"
+                          ? "נשלחה במייל ללקוח"
+                          : "נמסרה אליכם בטלגרם (לשליחה ידנית)"}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap rounded-lg bg-card p-3 text-sm">
+                        {q.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <form action={setLeadStatusAction} className="flex flex-wrap gap-2">

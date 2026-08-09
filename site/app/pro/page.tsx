@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { repo } from "@/lib/db";
 import { LeadForm } from "@/components/LeadForm";
 
 export const metadata: Metadata = { title: "לאנשי מקצוע ורשויות" };
+export const revalidate = 60;
 
 const audiences = [
   {
@@ -67,7 +68,7 @@ export default async function ProPage() {
           פתיחת תיק ספק / הסכם מסגרת
         </p>
         <p className="mb-5 mt-2 text-center text-sm text-ink-muted">
-          טופס קצר — ונחזור אליכם עם מחירון אנשי מקצוע תוך יום עסקים.
+          טופס קצר — ונחזור אליכם עם מחירון אנשי מקצוע בהקדם.
         </p>
         <LeadForm
           interest="אנשי מקצוע — פתיחת תיק ספק / הסכם מסגרת"

@@ -242,7 +242,7 @@ export function CatalogExplorer({
       {quoteSent && (
         <div className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-w-xl items-center justify-between gap-3 rounded-full border-[1.5px] border-leaf bg-[#F1EFDC] px-6 py-3.5 shadow-2xl shadow-soil/30">
           <span className="text-sm text-[#3E6231]">
-            <b>הבקשה נשלחה ✓</b> — נחזור אליכם עם הצעת מחיר עד יום העסקים הבא.
+            <b>הבקשה נשלחה ✓</b> — נחזור אליכם עם הצעת מחיר בהקדם.
           </span>
           <button
             onClick={() => setQuoteSent(false)}
@@ -295,9 +295,7 @@ export function CatalogExplorer({
           )}
           {panel === "quote" && (
             <div className="mb-2 max-h-[70vh] overflow-y-auto rounded-3xl border-[1.5px] border-line-sand bg-card p-5 shadow-2xl shadow-soil/30">
-              <p className="font-display text-lg">
-                הצעת מחיר ל־{rfq.length} עצים
-              </p>
+              <p className="font-display text-lg">בקשת הצעת מחיר</p>
               <p className="mb-4 mt-0.5 text-xs text-ink-muted">
                 {rfqTrees
                   .map(({ item, tree }) =>
@@ -308,8 +306,9 @@ export function CatalogExplorer({
                   .join(" · ")}
               </p>
               <LeadForm
-                interest={`בקשת הצעת מחיר ל־${rfq.length} עצים`}
+                interest="בקשת הצעת מחיר לעצים שנבחרו"
                 channel="rfq"
+                messageLabel="הערות (לא חובה) — גישה לשטח, מועד רצוי, או כל דבר שכדאי שנדע"
                 items={rfqTrees.map(({ item, tree }) => ({
                   treeSlug: tree.slug,
                   treeName: tree.nameHe,

@@ -76,6 +76,24 @@ export default async function AdminAiPage() {
               בשרת — לא כאן.
             </span>
           </label>
+          <label className="mt-4 block text-xs text-ink-muted">
+            מנוע המזכיר בטלגרם
+            <select
+              name="aiSecretaryModel"
+              defaultValue={s.aiSecretaryModel}
+              className="admin-input"
+            >
+              {AI_MODELS.anthropic.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.labelHe}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-[11px] leading-relaxed">
+              המזכיר שולח מיילים בשמכם, לכן הוא רץ על Claude בלבד. ברירת
+              המחדל — Opus, החכם ביותר.
+            </span>
+          </label>
         </section>
 
         <section className="rounded-2xl border-[1.5px] border-line-sand bg-card p-5">

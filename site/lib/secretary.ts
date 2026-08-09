@@ -7,6 +7,10 @@ import {
   effectivePrompt,
   fillPlaceholders,
 } from "@/lib/ai-prompts";
+import { AI_MODELS } from "@/lib/ai-models";
+import { tgSendToAdmins } from "@/lib/telegram";
+import { emailFrom, rtlEmailHtml } from "@/lib/notify";
+import { safeCalculate } from "@/lib/calc";
 
 /**
  * The owner-facing Telegram secretary. Runs ONLY for admin chat IDs —
@@ -18,7 +22,6 @@ import {
  * hijacked Telegram account can't silently rewrite the public site.
  */
 
-const MODEL = process.env.ASSISTANT_MODEL ?? "claude-opus-5";
 const MAX_TOOL_ROUNDS = 6;
 const client = new Anthropic();
 
@@ -131,6 +134,39 @@ const tools: Anthropic.Tool[] = [
     input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
+    name: "create_lead",
+    description:
+      "יצירת פנייה חדשה בשם הבעלים — למשל מישהו שדיבר איתו בטלפון. הפנייה נרשמת במערכת (ערוץ 'ידני/טלפון', סטטוס 'יצרנו קשר') ואז אפשר גם לשלוח לה הצעת מחיר במייל.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "שם הלקוח" },
+        phone: { type: "string", description: "טלפון (רשות)" },
+        email: {
+          type: "string",
+          description: "מייל (רשות — נדרש רק אם רוצים לשלוח הצעת מחיר במייל)",
+        },
+        interest: { type: "string", description: "במה מתעניין, במשפט אחד" },
+      },
+      required: ["name", "interest"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "send_quote_to_owner",
+    description:
+      "מסירת הצעת מחיר מאושרת לבעלים עצמו (כשלפנייה אין מייל, או כשהבעלים מעדיף לשלוח בעצמו). ההצעה נשלחת אליו בטלגרם כהודעה נקייה להעברה, ואם יש טלפון נייד לפנייה — גם קישור וואטסאפ מוכן עם הטקסט. קרא רק אחרי שהבעלים אישר את הנוסח.",
+    input_schema: {
+      type: "object",
+      properties: {
+        lead_id: { type: "string" },
+        body: { type: "string", description: "נוסח ההצעה המלא, כפי שאושר" },
+      },
+      required: ["lead_id", "body"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "send_quote_email",
     description:
       "שליחת הצעת מחיר במייל ללקוח של פנייה. שלח רק אחרי שהצגת לבעלים את נוסח המייל המלא בהודעה קודמת והוא אישר במפורש. נכשל אם לפנייה אין כתובת מייל.",
@@ -142,6 +178,19 @@ const tools: Anthropic.Tool[] = [
         body: { type: "string", description: "גוף המייל המלא בעברית, כפי שאושר" },
       },
       required: ["lead_id", "subject", "body"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "calculate",
+    description:
+      "מחשבון מדויק. חובה להשתמש בו לכל חישוב בהצעת מחיר (שורות × כמויות, תוספות, סה\"כ) — לעולם אל תחשב בראש. תומך + - * / וסוגריים, למשל: 3*7800+2*6500+1400",
+    input_schema: {
+      type: "object",
+      properties: {
+        expression: { type: "string", description: "ביטוי חשבוני, למשל 3*7800+1400" },
+      },
+      required: ["expression"],
       additionalProperties: false,
     },
   },
@@ -164,10 +213,16 @@ async function buildSystemPrompt(): Promise<string> {
     dateStyle: "full",
     timeStyle: "short",
   });
-  return fillPlaceholders(
+  const base = fillPlaceholders(
     effectivePrompt(settings.aiPrompts.secretarySystem, DEFAULT_SECRETARY_SYSTEM),
     { siteName: settings.siteName, phone: settings.phone, now },
   );
+  // the owner's quote template (set in /admin/telegram) rides along so the
+  // secretary fills it instead of inventing a format
+  const template = settings.quoteTemplateHe.trim();
+  return template
+    ? `${base}\n\n## תבנית הצעת המחיר של הבעלים — מלא אותה נאמנה (סמנים כמו {שם}, {פירוט}, {סה"כ} מוחלפים בערכים האמיתיים)\n${template}`
+    : base;
 }
 
 async function runTool(name: string, input: Record<string, unknown>): Promise<string> {
@@ -265,6 +320,60 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
     });
   }
 
+  if (name === "create_lead") {
+    const email = String(input.email ?? "").trim().slice(0, 120);
+    const lead: Lead = {
+      id: randomUUID(),
+      createdAt: new Date().toISOString(),
+      name: String(input.name ?? "").trim().slice(0, 80),
+      phone: String(input.phone ?? "").trim().slice(0, 20),
+      email: /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) ? email : undefined,
+      message: "נוצר על ידי הבעלים דרך המזכיר בטלגרם",
+      interest: String(input.interest ?? "").trim().slice(0, 200),
+      items: [],
+      channel: "manual",
+      sourcePage: "telegram",
+      isPro: false,
+      status: "contacted", // the owner already spoke with them
+    };
+    if (lead.name.length < 2) {
+      return JSON.stringify({ error: "חסר שם הלקוח" });
+    }
+    await repo.addLead(lead);
+    return JSON.stringify({
+      ok: true,
+      id: `#${lead.id.slice(0, 8)}`,
+      has_email: Boolean(lead.email),
+      note: lead.email
+        ? "הפנייה נוצרה — אפשר להמשיך להצעת מחיר"
+        : "הפנייה נוצרה בלי מייל — להצעת מחיר במייל צריך לבקש מהבעלים כתובת",
+    });
+  }
+
+  if (name === "send_quote_to_owner") {
+    const lead = findLead(await repo.getLeads(), String(input.lead_id ?? ""));
+    if (!lead) return JSON.stringify({ error: "פנייה לא נמצאה" });
+    const body = String(input.body ?? "").slice(0, 4000);
+    if (!body.trim()) return JSON.stringify({ error: "נוסח ההצעה ריק" });
+    // standalone message = easy to forward as-is
+    await tgSendToAdmins(body);
+    // one-tap WhatsApp to the customer with the proposal pre-filled
+    const mobile = lead.phone.replace(/[^\d]/g, "");
+    if (/^05\d{8}$/.test(mobile)) {
+      const wa = `https://wa.me/972${mobile.slice(1)}?text=${encodeURIComponent(body.slice(0, 1800))}`;
+      await tgSendToAdmins(`לשליחה ללקוח בוואטסאפ בלחיצה אחת:\n${wa}`);
+    }
+    await repo.appendLeadQuote(lead.id, {
+      at: new Date().toISOString(),
+      body,
+      via: "telegram",
+    });
+    return JSON.stringify({
+      ok: true,
+      note: "ההצעה נשלחה לבעלים בטלגרם" + (/^05\d{8}$/.test(mobile) ? " כולל קישור וואטסאפ ללקוח" : ""),
+    });
+  }
+
   if (name === "send_quote_email") {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
@@ -276,6 +385,7 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
     if (!lead.email) {
       return JSON.stringify({ error: "לפנייה זו אין כתובת מייל — הצע וואטסאפ או טלפון" });
     }
+    const settings = await repo.getSettings();
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -283,17 +393,34 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: process.env.LEAD_EMAIL_FROM ?? "quotes@resend.dev",
+        from: await emailFrom(),
         to: lead.email,
+        // customer replies land in the owner's real mailbox
+        ...(settings.email && { reply_to: settings.email }),
         subject: String(input.subject ?? "").slice(0, 200),
         text: String(input.body ?? "").slice(0, 8000),
+        html: rtlEmailHtml(String(input.body ?? "").slice(0, 8000)),
       }),
     });
     if (!res.ok) {
       console.error("quote email failed:", res.status, await res.text());
       return JSON.stringify({ error: "שליחת המייל נכשלה — נסה שוב מאוחר יותר" });
     }
+    await repo.appendLeadQuote(lead.id, {
+      at: new Date().toISOString(),
+      body: String(input.body ?? "").slice(0, 8000),
+      via: "email",
+    });
     return JSON.stringify({ ok: true, sent_to: lead.email });
+  }
+
+  if (name === "calculate") {
+    try {
+      const result = safeCalculate(String(input.expression ?? ""));
+      return JSON.stringify({ result });
+    } catch {
+      return JSON.stringify({ error: "ביטוי לא תקין — השתמש רק במספרים, + - * / וסוגריים" });
+    }
   }
 
   if (name === "search_trees") {
@@ -306,8 +433,8 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
         name: t.nameHe,
         code: t.code,
         type: t.saleType === "unique" ? "דייר ותיק" : "מלאי",
-        height_m: t.heightM,
-        trunk_cm: t.trunkDiameterCm,
+        height_m: t.saleType === "unique" ? t.heightM || undefined : undefined,
+        trunk_cm: t.saleType === "unique" ? t.trunkDiameterCm || undefined : undefined,
         price_from: `₪${t.price.toLocaleString("he-IL")}`,
         availability: t.availability,
         care_notes: t.aiNotesHe || undefined,
@@ -319,7 +446,14 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
 }
 
 export async function runSecretary(history: SecretaryTurn[]): Promise<string> {
-  const system = await buildSystemPrompt();
+  const [system, settings] = await Promise.all([
+    buildSystemPrompt(),
+    repo.getSettings(),
+  ]);
+  // model picked in /admin/ai (Claude only); validated against the registry
+  const model = AI_MODELS.anthropic.some((m) => m.id === settings.aiSecretaryModel)
+    ? settings.aiSecretaryModel
+    : "claude-opus-5";
   const messages: Anthropic.MessageParam[] = history.map((t) => ({
     role: t.role,
     content: t.content,
@@ -327,7 +461,7 @@ export async function runSecretary(history: SecretaryTurn[]): Promise<string> {
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const response = await client.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 1024,
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       tools,

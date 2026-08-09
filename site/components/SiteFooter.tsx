@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { repo } from "@/lib/db";
-import { whatsappLink } from "@/lib/site";
+import { wazeLink, whatsappLink } from "@/lib/site";
+import { VETERANS_CATEGORY, categorySlug, stockCategories } from "@/lib/catalog";
 
 /**
  * SEO-rich footer: four link columns (pages, popular trees, guides, contact)
@@ -14,12 +15,10 @@ export async function SiteFooter() {
     repo.getGuides(),
   ]);
   const available = trees.filter((t) => t.availability !== "sold");
-  // Mirror the catalog's two groups: a couple of veterans (✦) lead, stock fills the rest.
-  const veterans = available.filter((t) => t.saleType === "unique").slice(0, 2);
-  const stock = available
-    .filter((t) => t.saleType !== "unique")
-    .slice(0, 5 - veterans.length);
-  const popularTrees = [...veterans, ...stock];
+  // Category landing-page links — the sitewide internal-link block the old
+  // site ranked with. Veterans lead, then every stock category, then sales.
+  const hasVeterans = available.some((t) => t.saleType === "unique");
+  const categories = stockCategories(trees);
   const footerGuides = guides.filter((g) => g.published).slice(0, 5);
 
   const colTitle = "mb-3 text-xs font-semibold tracking-widest text-gold-bright";
@@ -51,11 +50,22 @@ export async function SiteFooter() {
 
         <nav aria-label="עצים בוגרים למכירה">
           <p className={colTitle}>עצים בוגרים למכירה</p>
-          {popularTrees.map((t) => (
-            <Link key={t.slug} href={`/tree/${t.slug}`} className={link}>
-              {t.saleType === "unique" ? `✦ ${t.nameHe}` : t.nameHe}
+          {hasVeterans && (
+            <Link
+              href={`/catalog/${categorySlug(VETERANS_CATEGORY)}`}
+              className={link}
+            >
+              ✦ {VETERANS_CATEGORY}
+            </Link>
+          )}
+          {categories.map((c) => (
+            <Link key={c} href={`/catalog/${categorySlug(c)}`} className={link}>
+              {c}
             </Link>
           ))}
+          <Link href="/sales" className={link}>
+            מבצעי מכירה
+          </Link>
           <Link href="/catalog" className={`${link} text-gold-bright`}>
             לכל העצים ←
           </Link>
@@ -87,9 +97,21 @@ export async function SiteFooter() {
         <a href={`tel:${settings.proPhone}`} className="hover:text-ink-cream">
           קו אנשי מקצוע: <span dir="ltr">{settings.proPhone}</span>
         </a>
+        {wazeLink(settings.addressHe, settings.navCoords) && (
+          <a
+            href={wazeLink(settings.addressHe, settings.navCoords)!}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-ink-cream"
+          >
+            {settings.addressHe ? `${settings.addressHe} · ` : ""}ניווט אלינו ←
+          </a>
+        )}
+        <Link href="/accessibility" className="text-xs hover:text-ink-cream">
+          הצהרת נגישות
+        </Link>
         <span className="ms-auto text-xs">
-          © {new Date().getFullYear()} {settings.siteName} · עצים בוגרים מאז{" "}
-          1994
+          © {new Date().getFullYear()} {settings.siteName}
         </span>
       </div>
     </footer>
