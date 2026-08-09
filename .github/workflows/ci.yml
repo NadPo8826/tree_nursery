@@ -19,9 +19,10 @@ jobs:
           cache: npm
           cache-dependency-path: site/package-lock.json
       - run: npm ci
-      - name: Type check
-        run: npx tsc --noEmit
-      - name: Build
+      # `next build` includes the full TypeScript check; a standalone tsc
+      # before build would fail — Next's generated types (LayoutProps etc.)
+      # only exist in .next/types after a build.
+      - name: Build (includes type check)
         run: npm run build
       - name: Dependency audit (high+)
         run: npm audit --audit-level=high
