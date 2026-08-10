@@ -241,9 +241,8 @@ export function ChatWidget() {
             <div className="flex items-end gap-2">
               <BotAvatar />
               <div className="max-w-[85%] rounded-2xl rounded-se-sm border border-line-sand bg-card px-3.5 py-2.5 text-sm">
-                שלום! כאן העוזר הדיגיטלי של המשתלה 🌳 אשמח לעזור — בבחירת עץ
-                לגינה, בשאלות על העתקה ונטיעה, או בתיאום ביקור אצלנו. מה תרצו
-                לדעת?
+                שלום! כאן העוזר הדיגיטלי של המשתלה 🌳 אשמח לעזור בכל נושא
+                שקשור לעצים ולמשתלה — במה אפשר לעזור?
               </div>
             </div>
             {turns.map((t, i) =>
