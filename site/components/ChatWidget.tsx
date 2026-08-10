@@ -73,12 +73,6 @@ function ThumbIcon({ down = false }: { down?: boolean }) {
   );
 }
 
-const OPENERS = [
-  "איזה עץ צל מתאים לגינה קטנה?",
-  "איך עובדת העתקה של עץ בוגר?",
-  "אפשר לבוא לבקר?",
-];
-
 /** The nursery's little tree — drawn to match the design system, not an emoji. */
 function BotAvatar({ size = 28, onDark = false }: { size?: number; onDark?: boolean }) {
   return (
@@ -247,23 +241,11 @@ export function ChatWidget() {
             <div className="flex items-end gap-2">
               <BotAvatar />
               <div className="max-w-[85%] rounded-2xl rounded-se-sm border border-line-sand bg-card px-3.5 py-2.5 text-sm">
-                שלום! אני העוזר הדיגיטלי של המשתלה. אפשר לשאול אותי על עצים,
-                העתקות או ביקור אצלנו 🌳
+                שלום! כאן העוזר הדיגיטלי של המשתלה 🌳 אשמח לעזור — בבחירת עץ
+                לגינה, בשאלות על העתקה ונטיעה, או בתיאום ביקור אצלנו. מה תרצו
+                לדעת?
               </div>
             </div>
-            {turns.length === 0 && (
-              <div className="flex flex-wrap gap-2 pt-1">
-                {OPENERS.map((o) => (
-                  <button
-                    key={o}
-                    onClick={() => send(o)}
-                    className="rounded-full border border-line-warm bg-card px-3 py-1.5 text-xs text-ink-soft hover:border-clay"
-                  >
-                    {o}
-                  </button>
-                ))}
-              </div>
-            )}
             {turns.map((t, i) =>
               t.role === "assistant" && t.content === "" ? null : t.role ===
                 "user" ? (
