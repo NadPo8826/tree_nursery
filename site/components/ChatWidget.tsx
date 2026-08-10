@@ -218,7 +218,10 @@ export function ChatWidget() {
       {open && (
         <div
           dir="rtl"
-          className="fixed bottom-3 end-3 start-3 z-50 flex h-[68dvh] max-h-[560px] flex-col overflow-hidden rounded-3xl bg-cream shadow-2xl shadow-soil/40 sm:bottom-5 sm:end-auto sm:start-5 sm:h-[520px] sm:w-[380px]"
+          // one continuous width across all viewports: ~380px, shrinking only
+          // when the screen itself is narrower — never wider on mobile than
+          // on desktop (start-anchored; RTL start = right)
+          className="fixed bottom-3 start-3 z-50 flex h-[68dvh] max-h-[560px] w-[min(24rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-3xl bg-cream shadow-2xl shadow-soil/40 sm:bottom-5 sm:start-5 sm:h-[520px]"
         >
           <div className="flex items-center gap-3 bg-soil px-4 py-3 text-ink-cream">
             <BotAvatar size={34} onDark />
